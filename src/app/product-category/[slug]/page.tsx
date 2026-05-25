@@ -1,5 +1,5 @@
 import CategoryContent from "./CategoryContent";
-import { getCategories, getVariationProducts } from "@/lib/woocommerce";
+import { getCategories, getParentProducts } from "@/lib/woocommerce";
 
 export const revalidate = 300; // ISR: refresh every 5 minutes
 
@@ -8,7 +8,7 @@ export default async function ProductCategoryPage({ params }: { params: Promise<
   
   const [categories, categoryProducts] = await Promise.all([
     getCategories(),
-    getVariationProducts({ categorySlug: slug }),
+    getParentProducts({ categorySlug: slug }),
   ]);
 
   return (

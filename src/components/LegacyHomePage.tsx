@@ -18,7 +18,7 @@ import type { InstagramPost } from "@/lib/instagram";
 import { getInstagramFeed } from "@/lib/instagram";
 import {
   getRelativeProductLink,
-  getVariationProducts,
+  getParentProducts,
   getProductsByIds,
   getProductReviews,
   type WCReview,
@@ -114,7 +114,7 @@ export default async function LegacyHomePage() {
   
   try {
     const [productsResult, reviewsResult, showcaseResult, instagramResult] = await Promise.allSettled([
-      getVariationProducts(),
+      getParentProducts(),
       getProductReviews({ per_page: 5 }),
       getProductsByIds(HOT_SELLER_IDS),
       getInstagramFeed(),
@@ -125,11 +125,23 @@ export default async function LegacyHomePage() {
     showcaseProducts = showcaseResult.status === "fulfilled" ? showcaseResult.value : [];
     instagramPosts = instagramResult.status === "fulfilled" ? instagramResult.value : [];
     
-    // Log for debugging
-    if (process.env.NODE_ENV !== "production") {
-      console.log(
-        `[HomePage] Loaded ${products.length} products, ${reviews.length} reviews, ${showcaseProducts.length} hot sellers, ${instagramPosts.length} instagram posts`,
-      );
+    // Always log in production so ISR failures show in Vercel function logs
+    console.log(
+      `[HomePage] Loaded ${products.length} products, ${reviews.length} reviews, ${showcaseProducts.length} hot sellers, ${instagramPosts.length} instagram posts`,
+    );
+
+    // Log individual failures for debugging
+    if (productsResult.status === "rejected") {
+      console.error("[HomePage] Products fetch failed:", productsResult.reason);
+    }
+    if (reviewsResult.status === "rejected") {
+      console.error("[HomePage] Reviews fetch failed:", reviewsResult.reason);
+    }
+    if (showcaseResult.status === "rejected") {
+      console.error("[HomePage] Hot sellers fetch failed:", showcaseResult.reason);
+    }
+    if (instagramResult.status === "rejected") {
+      console.error("[HomePage] Instagram fetch failed:", instagramResult.reason);
     }
   } catch (error) {
     console.error("[HomePage] Error loading data:", error);
@@ -149,8 +161,19 @@ export default async function LegacyHomePage() {
             attr.name.toLowerCase().includes("color"),
         );
         if (!colorAttr) return true;
-        const productColor = (colorAttr.option || "").toLowerCase();
-        return tab.allowedColors.some((c) => productColor.includes(c.toLowerCase()));
+
+        // Parent products carry every available color in `options`/`terms`,
+        // while individual variations carry just one color in `option`.
+        // Build a single haystack from whatever data the product exposes.
+        const haystackParts = [
+          colorAttr.option || "",
+          ...(colorAttr.options ?? []),
+          ...((colorAttr.terms ?? []).map((term) => term.name)),
+        ].map((value) => value.toLowerCase());
+
+        return tab.allowedColors.some((allowed) =>
+          haystackParts.some((value) => value.includes(allowed.toLowerCase())),
+        );
       });
     }
 

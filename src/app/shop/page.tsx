@@ -1,5 +1,5 @@
 import ShopContent from "./ShopContent";
-import { getCategories, getVariationProducts } from "@/lib/woocommerce";
+import { getCategories, getParentProducts } from "@/lib/woocommerce";
 import type { Metadata } from "next";
 
 export const revalidate = 300; // ISR: refresh every 5 minutes
@@ -33,7 +33,7 @@ export default async function ShopPage({
   const params = await searchParams;
   const [categories, allProducts] = await Promise.all([
     getCategories(),
-    getVariationProducts(),
+    getParentProducts(),
   ]);
 
   return (

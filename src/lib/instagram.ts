@@ -9,12 +9,19 @@ export async function getInstagramFeed(): Promise<InstagramPost[]> {
   try {
     // Fetch from the WordPress domain which holds the WPzoom Instagram Widget
     const storeUrl = process.env.NEXT_PUBLIC_LEGACY_SITE_URL || "https://api.veloriavault.com";
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout — Hostinger can be slow
+    
     const response = await fetch(`${storeUrl}/`, {
       next: { revalidate: 3600 },
       headers: {
         "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
-      }
+      },
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch WordPress homepage: ${response.status}`);
@@ -22,9 +29,15 @@ export async function getInstagramFeed(): Promise<InstagramPost[]> {
 
     const html = await response.text();
     const posts: InstagramPost[] = [];
-    
-    // Target the individual list items in the feed/widget
-    const itemRegex = /<li[^>]*class="[^"]*zoom-instagram-(?:widget|feed)__item[^"]*"[^>]*>([\s\S]*?)<\/li>/gi;
+
+    // The WPzoom Instagram Widget historically wrapped each item in
+    //   <li class="zoom-instagram-widget__item">…</li>
+    // but a recent plugin update emits
+    //   <li data-media-type="image|video">…</li>
+    // instead. Match either form so future plugin tweaks don't silently
+    // empty the feed.
+    const itemRegex =
+      /<li[^>]*(?:class="[^"]*zoom-instagram-(?:widget|feed)__item[^"]*"|data-media-type="[^"]+")[^>]*>([\s\S]*?)<\/li>/gi;
     let match;
     
     while ((match = itemRegex.exec(html)) !== null) {

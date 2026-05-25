@@ -17,12 +17,24 @@ export interface WCCategory {
   image: WCImage | null;
 }
 
+export interface WCAttributeTerm {
+  id?: number;
+  name: string;
+  slug: string;
+}
+
 export interface WCAttribute {
   id: number;
   name: string;
   slug: string;
   option: string;
   options?: string[];
+  /**
+   * Available terms for this attribute, including their slugs. Populated for
+   * parent (variable) products from Store API `attributes[].terms`. Used to
+   * render color swatches that link to specific variations.
+   */
+  terms?: WCAttributeTerm[];
   variation?: boolean;
   visible?: boolean;
 }
@@ -261,7 +273,8 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2): P
   let lastError: unknown;
   for (let i = 0; i < retries; i++) {
     try {
-      // Use a timeout to prevent hanging requests on Hostinger
+      // Vercel Hobby plan has a 10s function timeout.
+      // Keep per-request timeout well under that to leave room for retries.
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per request
       
@@ -274,9 +287,10 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2): P
       lastError = new Error(`HTTP ${response.status}`);
     } catch (error) {
       lastError = error;
+      console.warn(`[fetchWithRetry] Attempt ${i + 1}/${retries} failed for ${url}:`, error instanceof Error ? error.message : error);
     }
     if (i < retries - 1) {
-      // Faster backoff: 500ms
+      // Short backoff to stay within function time limits
       await new Promise((res) => setTimeout(res, 500));
     }
   }
@@ -512,6 +526,12 @@ function mapStoreAttributes(product: StoreProduct): WCAttribute[] {
     slug: attribute.taxonomy || fallbackSlug(attribute.name),
     option: "",
     options: attribute.terms?.map((term) => term.name) ?? [],
+    terms:
+      attribute.terms?.map((term) => ({
+        id: term.id,
+        name: term.name,
+        slug: term.slug,
+      })) ?? [],
     variation: attribute.has_variations ?? false,
     visible: true,
   }));
@@ -588,15 +608,110 @@ function mapStoreReview(review: StoreReview): WCReview {
   };
 }
 
-function dedupeParentIds(products: Array<Pick<WCProduct, "parent_id">>): number[] {
-  return Array.from(
-    new Set(
-      products
-        .map((product) => product.parent_id)
-        .filter((parentId): parentId is number => parentId > 0),
-    ),
-  );
+interface AdminApiImage {
+  id?: number;
+  src?: string;
+  alt?: string;
+  name?: string;
 }
+
+interface AdminApiCategory {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+interface AdminApiAttribute {
+  id?: number;
+  name: string;
+  options?: string[];
+  variation?: boolean;
+  visible?: boolean;
+}
+
+interface AdminApiProduct {
+  id: number;
+  name: string;
+  slug: string;
+  permalink?: string;
+  type?: string;
+  parent_id?: number;
+  description?: string;
+  short_description?: string;
+  price?: string;
+  regular_price?: string;
+  sale_price?: string;
+  on_sale?: boolean;
+  images?: AdminApiImage[];
+  categories?: AdminApiCategory[];
+  average_rating?: string;
+  rating_count?: number;
+  stock_status?: string;
+  stock_quantity?: number | null;
+  sku?: string;
+  related_ids?: number[];
+  attributes?: AdminApiAttribute[];
+  variations?: number[];
+  menu_order?: number;
+  price_html?: string;
+  meta_data?: WCMetaData[];
+}
+
+function mapAdminProduct(product: AdminApiProduct): WCProduct {
+  // Admin API (v3) uses simple strings for prices, Store API (v1) uses a nested object.
+  // We normalize everything to WCProduct format.
+  const images = (product.images ?? []).map((img) => ({
+    id: img.id ?? 0,
+    src: rewriteMediaUrl(img.src),
+    alt: img.alt || product.name,
+    name: img.name,
+  }));
+
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    permalink: product.permalink || "",
+    type: product.type || "simple",
+    parent_id: product.parent_id ?? 0,
+    description: product.description || "",
+    short_description: product.short_description || "",
+    price: product.price || "0",
+    regular_price: product.regular_price || product.price || "0",
+    sale_price: product.sale_price || "",
+    on_sale: product.on_sale ?? false,
+    image: images[0],
+    images,
+    categories: (product.categories ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      description: "",
+      count: 0,
+      image: null,
+    })),
+    average_rating: product.average_rating || "0",
+    rating_count: product.rating_count ?? 0,
+    stock_status: product.stock_status || "instock",
+    stock_quantity: product.stock_quantity ?? null,
+    sku: product.sku || "",
+    related_ids: product.related_ids || [],
+    attributes: (product.attributes ?? []).map((a) => ({
+      id: a.id ?? 0,
+      name: a.name,
+      slug: a.name.toLowerCase(),
+      option: a.options?.[0] || "",
+      options: a.options || [],
+      variation: a.variation ?? false,
+      visible: a.visible ?? true,
+    })),
+    variations: product.variations || [],
+    menu_order: product.menu_order || 0,
+    price_html: product.price_html,
+    meta_data: product.meta_data || [],
+  };
+}
+
 
 const PRODUCT_SLUG_STOP_WORDS = new Set([
   "bag",
@@ -676,7 +791,16 @@ function findMatchedProduct(products: WCProduct[], requestedSlug: string): WCPro
     }
   }
 
-  return null;
+  // Last resort: Fuzzy matching if no exact alias matches.
+  // This helps find 'freya-cherry' when 'freya' is requested.
+  const normalizedRequested = requestedSlug.toLowerCase();
+  return (
+    products.find((product) => {
+      const slug = fallbackSlug(product.slug);
+      const name = fallbackSlug(product.name);
+      return slug.includes(normalizedRequested) || name.includes(normalizedRequested);
+    }) ?? null
+  );
 }
 
 export async function getProducts(options: {
@@ -737,6 +861,18 @@ export async function getProductById(id: number): Promise<WCProduct | null> {
     const product = await storeFetch<StoreProduct>(`/products/${id}`);
 
     if (!product || typeof product !== "object" || !("id" in product)) {
+      // Fallback to Admin API
+      const adminProduct = await adminFetch<AdminApiProduct | Record<string, never>>(
+        `/products/${id}`,
+      );
+      if (
+        adminProduct &&
+        typeof adminProduct === "object" &&
+        "id" in adminProduct &&
+        adminProduct.id
+      ) {
+        return mapAdminProduct(adminProduct as AdminApiProduct);
+      }
       return null;
     }
 
@@ -768,7 +904,7 @@ export const getProductBySlug = cache(async function getProductBySlug(slug: stri
       return matchedProduct;
     };
 
-    // Fast path: Try finding the product directly by its slug first.
+    // Fast path 1: Try finding the product directly by its slug using the Store API.
     const directMatches = await getProducts({ slug: normalizedSlug, per_page: 10 });
     const directMatch = await hydrateMatchedProduct(
       findMatchedProduct(directMatches, normalizedSlug),
@@ -778,20 +914,35 @@ export const getProductBySlug = cache(async function getProductBySlug(slug: stri
       return directMatch;
     }
 
-    // Fallback: Use one single search term query to prevent exhaustive rate-limiting.
-    const fallbackSearch = normalizedSlug.replace(/-/g, " ");
-    if (fallbackSearch !== normalizedSlug) {
-      const searchMatches = await getProducts({
-        search: fallbackSearch,
-        per_page: 20,
+    // Fast path 2: Try the Admin API (WC v3) which supports exact slug filtering natively.
+    // We use it to find the ID, then fetch via Store API for consistency.
+    try {
+      const adminMatches = await adminFetch<Array<{ id: number }>>("/products", {
+        slug: normalizedSlug,
+        per_page: 1,
+        _fields: "id",
       });
-      const matchedProduct = await hydrateMatchedProduct(
-        findMatchedProduct(searchMatches, normalizedSlug),
-      );
-
-      if (matchedProduct) {
-        return matchedProduct;
+      if (Array.isArray(adminMatches) && adminMatches.length > 0 && adminMatches[0].id) {
+        return getProductById(adminMatches[0].id);
       }
+    } catch (error) {
+      console.warn("[getProductBySlug] Admin API ID lookup failed:", error);
+    }
+
+    // Fallback: Use a search term query to find the product.
+    // We do this if the exact slug match failed, regardless of hyphens.
+    const searchTerms = normalizedSlug.replace(/-/g, " ");
+    const searchMatches = await getProducts({
+      search: searchTerms,
+      per_page: 60, // Wide search to find the best match
+    });
+    
+    const matchedProduct = await hydrateMatchedProduct(
+      findMatchedProduct(searchMatches, normalizedSlug),
+    );
+
+    if (matchedProduct) {
+      return matchedProduct;
     }
 
     return null;
@@ -888,13 +1039,29 @@ export async function getParentProducts(options: {
   categorySlug?: string;
   search?: string;
 } = {}): Promise<WCProduct[]> {
-  const variationProducts = await getVariationProducts({
-    categorySlug: options.categorySlug,
-    search: options.search,
+  // The WooCommerce Store API list endpoint excludes individual variations
+  // by default and returns the parent (variable + simple) products in a
+  // single request. This is much faster than fetching all variations and
+  // then re-hydrating each parent individually.
+  const storeProducts = await storeFetchCollection<StoreProduct>("/products", {
+    per_page: options.per_page ?? 100,
+    search: options.search ?? "",
   });
 
-  const parentIds = dedupeParentIds(variationProducts).slice(0, options.per_page ?? 100);
-  return getProductsByIds(parentIds);
+  // Defensive filter — keep only top-level parent/simple products. Variations
+  // would have parent > 0; we never want them in listings.
+  let products = storeProducts
+    .filter((product) => !product.parent || product.parent === 0)
+    .filter((product) => product.type !== "variation")
+    .map(mapStoreProduct);
+
+  if (options.categorySlug) {
+    products = products.filter((product) =>
+      product.categories.some((category) => category.slug === options.categorySlug),
+    );
+  }
+
+  return products;
 }
 
 export async function getProductsByIds(ids: number[]): Promise<WCProduct[]> {
@@ -902,14 +1069,16 @@ export async function getProductsByIds(ids: number[]): Promise<WCProduct[]> {
     return [];
   }
 
-  // Try batch fetch first (parallel individual requests as fallback)
-  // The Store API sometimes 404s on individual /products/{id} endpoints,
-  // so we use Promise.allSettled to handle partial failures gracefully.
+  // Strategy 1: Parallel individual fetches via Store API (fastest path).
+  // NOTE: The Store API list endpoint with `include` does NOT return
+  // variable/parent products — only simple and variation types appear
+  // in list results. Individual `/products/{id}` works for all types,
+  // so we skip the batch include call entirely to save time on Vercel.
   const settledProducts = await Promise.allSettled(ids.map((id) => getProductById(id)));
 
   const results = ids
-    .map((id) => {
-      const settled = settledProducts.find((s, i) => i === ids.indexOf(id));
+    .map((_, i) => {
+      const settled = settledProducts[i];
       if (settled?.status === "fulfilled" && settled.value) {
         return settled.value;
       }
@@ -917,23 +1086,30 @@ export async function getProductsByIds(ids: number[]): Promise<WCProduct[]> {
     })
     .filter((product): product is WCProduct => Boolean(product));
 
-  // If individual fetches all failed, try a search-based approach
-  if (results.length === 0 && ids.length > 0) {
-    try {
-      // Fetch all variations and filter by ID
-      const allProducts = await storeFetchCollection<StoreProduct>("/products", {
-        per_page: 100,
-      });
-      return ids
-        .map((id) => allProducts.find((p) => p.id === id))
-        .filter((p): p is StoreProduct => Boolean(p))
-        .map(mapStoreProduct);
-    } catch {
-      return [];
-    }
+  if (results.length > 0) {
+    return results;
   }
 
-  return results;
+  // Strategy 2: If individual Store API fetches all failed, try the Admin API
+  try {
+    const adminPromises = ids.map((id) =>
+      adminFetch<AdminApiProduct | Record<string, never>>(`/products/${id}`).catch(
+        () => null,
+      ),
+    );
+    const adminResults = await Promise.all(adminPromises);
+    const mapped = adminResults
+      .filter(
+        (entry): entry is AdminApiProduct =>
+          Boolean(entry && typeof entry === "object" && "id" in entry && entry.id),
+      )
+      .map(mapAdminProduct);
+    if (mapped.length > 0) return mapped;
+  } catch {
+    // Fall through
+  }
+
+  return [];
 }
 
 export async function getRelatedProducts(

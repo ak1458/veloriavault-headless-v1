@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useWishlistStore } from "@/store/wishlist";
 import { useCartStore } from "@/store/cart";
 import { getRelativeProductLink, type WCProduct } from "@/lib/woocommerce";
+import { getProductColorSwatches } from "@/lib/swatches";
 import { Heart, Star } from "lucide-react";
 
 interface PremiumProductCardProps {
@@ -29,6 +30,7 @@ export default function PremiumProductCard({
   
   const image = product.images[0]?.src || "/images/bag-placeholder.svg";
   const categoryName = product.categories[0]?.name || "Luxury Bag";
+  const swatches = getProductColorSwatches(product);
 
   const handleWishlist = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -101,6 +103,28 @@ export default function PremiumProductCard({
             <Star key={i} size={10} className="text-[#b59a5c] fill-[#b59a5c]" />
           ))}
         </div>
+
+        {/* Color Swatches */}
+        {swatches.length > 1 && (
+          <div className="flex items-center justify-center gap-1.5 mb-3" aria-label="Available colors">
+            {swatches.slice(0, 6).map((swatch) => (
+              <Link
+                key={swatch.slug}
+                href={swatch.href}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={swatch.name}
+                title={swatch.name}
+                className="block w-4 h-4 rounded-full border border-gray-300 hover:scale-110 hover:border-[#b59a5c] transition-transform"
+                style={{ backgroundColor: swatch.hex }}
+              >
+                <span className="sr-only">{swatch.label}</span>
+              </Link>
+            ))}
+            {swatches.length > 6 && (
+              <span className="text-[10px] text-gray-400 ml-1">+{swatches.length - 6}</span>
+            )}
+          </div>
+        )}
         
         {/* Price Section */}
         <div className="flex items-center justify-center gap-3 mb-4">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCartStore } from "@/store/cart";
 import { getRelativeProductLink, type WCProduct } from "@/lib/woocommerce";
+import { getProductColorSwatches } from "@/lib/swatches";
 
 interface HomeProductCardProps {
   product: WCProduct;
@@ -24,6 +25,7 @@ export default function HomeProductCard({
   
   const image = product.images[0]?.src || "/images/bag-placeholder.svg";
   const categoryName = product.categories[0]?.name || "Luxury Bag";
+  const swatches = getProductColorSwatches(product);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -72,6 +74,28 @@ export default function HomeProductCard({
         
         <p className="text-xs text-gray-500 mb-2">{categoryName}</p>
         
+        {/* Color Swatches */}
+        {swatches.length > 1 && (
+          <div className="flex items-center justify-center gap-1.5 mb-3" aria-label="Available colors">
+            {swatches.slice(0, 6).map((swatch) => (
+              <Link
+                key={swatch.slug}
+                href={swatch.href}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={swatch.name}
+                title={swatch.name}
+                className="block w-4 h-4 rounded-full border border-gray-300 hover:scale-110 hover:border-[#b59a5c] transition-transform"
+                style={{ backgroundColor: swatch.hex }}
+              >
+                <span className="sr-only">{swatch.label}</span>
+              </Link>
+            ))}
+            {swatches.length > 6 && (
+              <span className="text-[10px] text-gray-400 ml-1">+{swatches.length - 6}</span>
+            )}
+          </div>
+        )}
+
         {/* Price */}
         <div className="flex items-center justify-center space-x-2 mb-3">
           {onSale && (
