@@ -960,6 +960,7 @@ export async function getProductVariations(
     void _productPermalink;
     const variations = await storeFetchCollection<StoreProduct>("/products", {
       parent: productId,
+      type: "variation",
       per_page: 100,
     });
 
