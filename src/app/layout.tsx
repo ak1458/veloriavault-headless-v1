@@ -4,6 +4,8 @@ import "./globals.css";
 import PremiumHeader from "@/components/PremiumHeader";
 import PremiumFooter from "@/components/PremiumFooter";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import ChatWidgetLoader from "@/components/ChatWidgetLoader";
+
 
 const inter = Inter({
   subsets: ["latin"],
@@ -118,6 +120,7 @@ export default function RootLayout({
         <main id="main-content">{children}</main>
         <PremiumFooter />
         <MobileBottomNav />
+        <ChatWidgetLoader />
       </body>
     </html>
   );

@@ -73,13 +73,21 @@ export default function ContactUsPage() {
             {contactInfo.map((item) => (
               <div
                 key={item.title}
-                className="bg-[#fafafa] rounded-xl p-4 sm:p-6 text-center hover:shadow-lg transition-all duration-300"
+                className="bg-[#fafafa] rounded-xl p-4 sm:p-6 text-center hover:shadow-lg transition-all duration-300 flex flex-col items-center"
               >
                 <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#1a1a1a] rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
                   <item.icon className="w-5 h-5 sm:w-6 sm:h-6 text-[#b59a5c]" />
                 </div>
-                <h3 className="text-base sm:text-lg font-serif text-gray-900 mb-1 sm:mb-2">{item.title}</h3>
-                {item.link ? (
+                <h3 className="text-base sm:text-lg font-serif text-gray-900 mb-2 sm:mb-3">{item.title}</h3>
+                
+                {item.title === "Call Us" ? (
+                  <a
+                    href={item.link}
+                    className="inline-flex items-center justify-center px-6 py-2.5 bg-black text-white text-[10px] sm:text-xs font-bold tracking-[0.15em] uppercase rounded-full hover:bg-[#b59a5c] transition-all duration-300"
+                  >
+                    Call Now
+                  </a>
+                ) : item.link ? (
                   <a
                     href={item.link}
                     className="text-sm sm:text-base text-gray-600 hover:text-[#b59a5c] transition-colors break-all"

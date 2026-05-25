@@ -1,6 +1,11 @@
 import LegacyHomePage from "@/components/LegacyHomePage";
 
-export const revalidate = 300; // ISR: refresh every 5 minutes
+// force-dynamic: Skip build-time pre-rendering — the Vercel build server
+// (US-East) cannot reliably reach the Hostinger WooCommerce backend,
+// causing ETIMEDOUT during `next build`. The page will render on the
+// first user request. Once Hostinger connectivity is stable, switch
+// back to ISR with: export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Veloria Vault | Luxury Leather Handbags",
