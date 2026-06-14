@@ -24,12 +24,15 @@
 html {
   scroll-behavior: smooth;
   max-width: 100%;
+  /* clip (not hidden) prevents horizontal pan on touch devices without
+     creating a scroll container — so position:sticky header keeps working. */
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
   background: #faf8f5;
   font-family: var(--font-sans);
