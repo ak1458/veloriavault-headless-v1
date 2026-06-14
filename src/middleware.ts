@@ -71,7 +71,14 @@ export function middleware(request: NextRequest) {
   const isVercelDomain = host.includes(".vercel.app");
   const isRootDomain = host === "veloriavault.com";
 
-  if (isVercelDomain || isRootDomain) {
+  // Canonicalize the apex domain and the PRODUCTION *.vercel.app alias to www.
+  // Preview deployments (VERCEL_ENV === "preview") are intentionally left
+  // reachable so they can be QA'd before promotion; Vercel already keeps them
+  // behind deployment protection and noindexed, so there is no SEO/leak risk.
+  const isProdVercelAlias =
+    isVercelDomain && process.env.VERCEL_ENV === "production";
+
+  if (isRootDomain || isProdVercelAlias) {
     const destination = new URL(`https://www.veloriavault.com${pathname}${search}`);
     return NextResponse.redirect(destination, 308); // Permanent Redirect
   }
