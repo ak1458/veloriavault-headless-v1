@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { Instagram, Loader2 } from "lucide-react";
 import type { InstagramPost } from "@/lib/instagram";
 
@@ -50,7 +51,15 @@ export default function InstagramFeed({
   const [posts, setPosts] = useState(initialPosts);
   const [isLoading, setIsLoading] = useState(initialPosts.length === 0);
   const [hasFetched, setHasFetched] = useState(initialPosts.length > 0);
+  const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
   const hasFetchedRef = useRef(initialPosts.length > 0);
+
+  const markFailed = (id: string) =>
+    setFailedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
 
   useEffect(() => {
     // Skip if we already have posts or have already fetched
@@ -132,28 +141,38 @@ export default function InstagramFeed({
           className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
         >
           {posts.length > 0 ? (
-            posts.map((post) => (
-              <a
-                key={post.id}
-                href={post.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative aspect-square overflow-hidden bg-gray-100 block"
-                title={post.caption}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.imageUrl}
-                  alt={post.caption || "Veloria Vault Instagram Post"}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                  <Instagram className="w-8 h-8 text-white" />
-                </div>
-              </a>
-            ))
+            posts.map((post) => {
+              const failed = failedIds.has(post.id);
+              return (
+                <a
+                  key={post.id}
+                  href={post.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative aspect-square overflow-hidden bg-gradient-to-br from-[#faf8f5] via-white to-[#f7f1e6] block"
+                  title={post.caption}
+                >
+                  {failed ? (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <Instagram className="w-7 h-7 text-[#b59a5c]" />
+                    </span>
+                  ) : (
+                    <Image
+                      src={post.imageUrl}
+                      alt={post.caption || "Veloria Vault Instagram Post"}
+                      fill
+                      sizes="(min-width:1024px) 16vw, (min-width:768px) 33vw, 50vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-110"
+                      loading="lazy"
+                      onError={() => markFailed(post.id)}
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                    <Instagram className="w-8 h-8 text-white" />
+                  </div>
+                </a>
+              );
+            })
           ) : isLoading ? (
             Array.from({ length: 6 }, (_, index) => (
               <LoadingTile key={`instagram-loading-${index}`} index={index} />

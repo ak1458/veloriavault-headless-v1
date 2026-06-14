@@ -1,11 +1,11 @@
 import LegacyHomePage from "@/components/LegacyHomePage";
 
-// force-dynamic: Skip build-time pre-rendering — the Vercel build server
-// (US-East) cannot reliably reach the Hostinger WooCommerce backend,
-// causing ETIMEDOUT during `next build`. The page will render on the
-// first user request. Once Hostinger connectivity is stable, switch
-// back to ISR with: export const revalidate = 300;
-export const dynamic = "force-dynamic";
+// ISR: serve a cached static page, regenerate every 5 minutes. The data
+// layer (LegacyHomePage) uses Promise.allSettled + try/catch with []
+// fallbacks, so a build-time fetch timeout degrades gracefully instead of
+// failing the build. This removes per-request SSR (and React #419 Suspense
+// timeouts against the Hostinger backend) and makes the homepage fast.
+export const revalidate = 300;
 
 export const metadata = {
   title: "Veloria Vault | Luxury Leather Handbags",
