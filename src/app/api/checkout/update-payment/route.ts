@@ -67,6 +67,57 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[UpdatePayment] Signature verified for order ${orderId}`);
+
+      // Defense-in-depth: confirm Razorpay actually captured at least the
+      // server-authoritative charge amount stored on the order. Fail-OPEN on any
+      // API/parse error so a transient outage never blocks a legitimate paid order.
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 8000);
+        const rzpAuth = Buffer.from(
+          `${process.env.RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`,
+        ).toString("base64");
+        const [orderRes, payRes] = await Promise.all([
+          fetch(`${WC_API_URL}/orders/${encodeURIComponent(String(orderId))}`, {
+            headers: { Authorization: getAuthHeader() },
+            signal: ctl.signal,
+          }),
+          fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(String(paymentId))}`, {
+            headers: { Authorization: `Basic ${rzpAuth}` },
+            signal: ctl.signal,
+          }),
+        ]);
+        clearTimeout(timer);
+        if (orderRes.ok && payRes.ok) {
+          const wcOrder = await orderRes.json();
+          const pay = await payRes.json();
+          const meta = (wcOrder.meta_data || []).find(
+            (m: { key: string; value: string }) => m.key === "_headless_charge_amount",
+          );
+          const expectedPaise = meta ? Math.round(parseFloat(String(meta.value)) * 100) : NaN;
+          const capturedPaise =
+            typeof pay.amount === "number" ? pay.amount : parseInt(String(pay.amount), 10);
+          // 1-paise tolerance for rounding
+          if (
+            Number.isFinite(expectedPaise) &&
+            Number.isFinite(capturedPaise) &&
+            capturedPaise + 1 < expectedPaise
+          ) {
+            console.error(
+              `[UpdatePayment] Underpayment for order ${orderId}: expected ${expectedPaise} paise, captured ${capturedPaise}`,
+            );
+            return NextResponse.json(
+              { error: "Payment amount mismatch" },
+              { status: 403 },
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[UpdatePayment] Capture-amount check skipped (non-fatal):",
+          e instanceof Error ? e.message : e,
+        );
+      }
     }
 
     // Update WooCommerce order with payment details

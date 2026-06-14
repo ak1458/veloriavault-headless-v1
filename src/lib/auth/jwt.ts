@@ -21,7 +21,9 @@ export function generateToken(payload: Omit<JWTPayload, "iat" | "exp">): string 
 
 export function verifyToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as unknown as JWTPayload;
+    // Pin the algorithm so a forged token can't downgrade to "none" or swap to
+    // an asymmetric alg (alg-confusion). We only ever sign with HS256.
+    return jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as JWTPayload;
   } catch {
     return null;
   }

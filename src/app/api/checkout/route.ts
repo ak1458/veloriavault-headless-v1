@@ -305,6 +305,10 @@ export async function POST(request: NextRequest) {
         { key: "_manual_coupon_discount", value: calculation.manualCouponDiscount.toString() },
         { key: "_original_subtotal", value: calculation.originalSubtotal.toString() },
         { key: "_total_savings", value: calculation.savingsBreakdown.reduce((sum, s) => sum + s.amount, 0).toString() },
+        // Server-authoritative charge amount (incl. all custom discounts the WC
+        // order total does NOT reflect). Read back by create-order/update-payment
+        // so the Razorpay amount can never be set by the client. See SECURITY.
+        { key: "_headless_charge_amount", value: calculation.finalTotal.toString() },
         { key: "_customer_ip", value: clientIP }, // For fraud detection
       ],
       customer_id: customerId,

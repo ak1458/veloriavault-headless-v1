@@ -31,6 +31,43 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createOrderSchema.parse(body);
 
+    // ========================================
+    // SERVER-AUTHORITATIVE AMOUNT (anti-underpayment)
+    // Never trust the client `amount`. Read the charge amount stored on the
+    // WooCommerce order by /api/checkout (_headless_charge_amount). Fall back to
+    // the validated client amount only if the WC order can't be read or the meta
+    // is missing — a server->WC hiccup must not block payment init for honest
+    // customers, and an attacker cannot force that fallback.
+    // ========================================
+    let chargeAmount = validated.amount;
+    const WC_API_URL = process.env.WC_API_URL?.trim();
+    const WC_KEY = process.env.WC_CONSUMER_KEY?.trim();
+    const WC_SECRET = process.env.WC_CONSUMER_SECRET?.trim();
+    if (WC_API_URL && WC_KEY && WC_SECRET) {
+      try {
+        const wcAuth = Buffer.from(`${WC_KEY}:${WC_SECRET}`).toString("base64");
+        const wcCtl = new AbortController();
+        const wcTimer = setTimeout(() => wcCtl.abort(), 8000);
+        const wcRes = await fetch(`${WC_API_URL}/orders/${encodeURIComponent(validated.orderId)}`, {
+          headers: { Authorization: `Basic ${wcAuth}` },
+          signal: wcCtl.signal,
+        });
+        clearTimeout(wcTimer);
+        if (wcRes.ok) {
+          const wcOrder = await wcRes.json();
+          const meta = (wcOrder.meta_data || []).find(
+            (m: { key: string; value: string }) => m.key === "_headless_charge_amount",
+          );
+          const stored = meta ? parseFloat(String(meta.value)) : NaN;
+          if (Number.isFinite(stored) && stored > 0) {
+            chargeAmount = stored;
+          }
+        }
+      } catch {
+        // keep fallback chargeAmount
+      }
+    }
+
     const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
     const safeReceipt = validated.orderNumber.substring(0, 40);
 
@@ -45,7 +82,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount: Math.round(validated.amount * 100),
+        amount: Math.round(chargeAmount * 100),
         currency: "INR",
         receipt: safeReceipt,
         notes: {
