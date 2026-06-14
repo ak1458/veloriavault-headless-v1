@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { Instagram, Loader2 } from "lucide-react";
 import type { InstagramPost } from "@/lib/instagram";
 
@@ -157,13 +156,16 @@ export default function InstagramFeed({
                       <Instagram className="w-7 h-7 text-[#b59a5c]" />
                     </span>
                   ) : (
-                    <Image
+                    /* Plain <img> loads direct from the browser (~140ms). Do NOT
+                       switch to next/image: the optimizer fetches server-side and
+                       Hostinger's firewall stalls non-browser requests (12s+ hang). */
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
                       src={post.imageUrl}
                       alt={post.caption || "Veloria Vault Instagram Post"}
-                      fill
-                      sizes="(min-width:1024px) 16vw, (min-width:768px) 33vw, 50vw"
-                      className="object-cover transition-transform duration-500 group-hover:scale-110"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       loading="lazy"
+                      referrerPolicy="no-referrer"
                       onError={() => markFailed(post.id)}
                     />
                   )}
