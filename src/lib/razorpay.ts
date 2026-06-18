@@ -17,7 +17,7 @@ export async function refundPayment(
   amountPaise?: number,
 ): Promise<{ success: boolean; refundId?: string; error?: string }> {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 8000);
+  const timer = setTimeout(() => ctl.abort(), 15000);
   try {
     const res = await fetch(
       `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}/refund`,

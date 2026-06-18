@@ -46,18 +46,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: eligibility.reason }, { status: 409 });
   }
 
-  // Refund prepaid orders that were actually captured.
+  // Refund prepaid orders that were actually captured. A cancellation is always
+  // a FULL refund, so we omit the amount and let Razorpay refund the captured
+  // total — avoids any amount-mismatch failures.
   let refunded = false;
   const paymentId = getOrderMeta(order, "_razorpay_payment_id");
   const paymentStatus = getOrderMeta(order, "_payment_status");
   if (paymentId && paymentStatus === "completed") {
-    const charge = getOrderMeta(order, "_headless_charge_amount");
-    const amountPaise = charge ? Math.round(parseFloat(charge) * 100) : undefined;
-    const refund = await refundPayment(paymentId, amountPaise);
+    const refund = await refundPayment(paymentId);
     if (!refund.success) {
       // Do NOT cancel if the refund failed — avoid a cancelled-but-unrefunded order.
+      console.error(
+        `[Cancel] Refund FAILED for order ${order.id} payment ${paymentId}: ${refund.error}`,
+      );
       return NextResponse.json(
-        { success: false, error: "We couldn't process the refund automatically. Please contact care@veloriavault.com — your order is unchanged." },
+        {
+          success: false,
+          error: `Refund could not be processed: ${refund.error || "unknown error"}. Your order is unchanged — please contact care@veloriavault.com.`,
+        },
         { status: 502 },
       );
     }

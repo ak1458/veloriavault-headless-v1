@@ -72,12 +72,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Real amount charged (custom discounts live in meta, not the WC total).
+    const meta: Array<{ key: string; value: string }> = order.meta_data || [];
+    const charge = meta.find((m) => m.key === "_headless_charge_amount")?.value;
+
     // Format the order data
     const orderDetails = {
       id: order.id,
       number: order.number,
       status: order.status,
       total: order.total,
+      amountPaid: charge ?? order.total,
+      paymentMethod: order.payment_method_title || "",
       dateCreated: order.date_created,
       billing: {
         firstName: order.billing.first_name,

@@ -10,6 +10,8 @@ interface OrderDetails {
   number: string;
   status: string;
   total: string;
+  amountPaid: string;
+  paymentMethod: string;
   dateCreated: string;
   billing: {
     firstName: string;
@@ -300,8 +302,8 @@ export default function TrackOrderPage() {
                   <p className="font-medium">{new Date(order.dateCreated).toLocaleDateString("en-IN")}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-1">Total Amount</p>
-                  <p className="font-medium">₹{parseFloat(order.total).toLocaleString("en-IN")}</p>
+                  <p className="text-gray-500 mb-1">Amount Paid</p>
+                  <p className="font-medium">₹{parseFloat(order.amountPaid).toLocaleString("en-IN")}</p>
                 </div>
                 <div>
                   <p className="text-gray-500 mb-1">Email</p>
@@ -470,11 +472,14 @@ export default function TrackOrderPage() {
               {/* Total */}
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex justify-between items-center">
-                  <span className="font-serif text-lg">Total</span>
+                  <span className="font-serif text-lg">Amount Paid</span>
                   <span className="font-serif text-xl font-medium text-[#b59a5c]">
-                    ₹{parseFloat(order.total).toLocaleString("en-IN")}
+                    ₹{parseFloat(order.amountPaid).toLocaleString("en-IN")}
                   </span>
                 </div>
+                {order.paymentMethod && (
+                  <p className="text-xs text-gray-400 text-right mt-1">Paid via {order.paymentMethod}</p>
+                )}
               </div>
             </div>
 
