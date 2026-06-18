@@ -32,6 +32,8 @@ type TabType = 'orders' | 'profile' | 'track' | 'returns' | 'support';
 export default function AccountPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionType, setSessionType] = useState<"customer" | "guest" | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,18 +61,26 @@ export default function AccountPage() {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth/me");
-      const data = await response.json();
-
+      const response = await fetch("/api/account/orders");
       if (!response.ok) {
         router.push("/login");
         return;
       }
-
-      setCustomer(data.customer);
+      const data = await response.json();
       setOrders(data.orders || []);
+      setSessionEmail(data.email || null);
+      setSessionType(data.sessionType || null);
+
+      // Registered customers also get their full profile for the card + profile tab.
+      if (data.sessionType === "customer") {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const me = await meRes.json();
+          setCustomer(me.customer);
+        }
+      }
     } catch {
-      setError("Failed to load profile");
+      setError("Failed to load account");
     } finally {
       setLoading(false);
     }
@@ -94,9 +104,15 @@ export default function AccountPage() {
     );
   }
 
-  if (!customer) {
+  // Allow both registered-customer and guest (OTP) sessions.
+  if (!customer && !sessionEmail) {
     return null;
   }
+
+  const displayName = customer?.displayName || sessionEmail || "Guest";
+  const displayEmail = customer?.email || sessionEmail || "";
+  const firstInitial = (customer?.firstName || sessionEmail || "G").charAt(0).toUpperCase();
+  const greetingName = customer?.firstName || sessionEmail || "there";
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -114,7 +130,7 @@ export default function AccountPage() {
         
         <div className="mb-8">
           <h1 className="text-3xl font-serif text-gray-900 mb-2">My Account</h1>
-          <p className="text-gray-500">Welcome back, {customer.firstName}</p>
+          <p className="text-gray-500">Welcome back, {greetingName}</p>
           {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
         </div>
 
@@ -125,11 +141,11 @@ export default function AccountPage() {
               <div className="p-6 border-b border-gray-100 text-center flex flex-col items-center">
                 <div className="w-20 h-20 bg-[#fbf9f4] rounded-full flex items-center justify-center mb-4 border border-[#eee7d5]">
                   <span className="text-3xl font-serif text-[#b59a5c]">
-                    {customer.firstName.charAt(0).toUpperCase()}
+                    {firstInitial}
                   </span>
                 </div>
-                <h2 className="font-medium text-gray-900 text-lg">{customer.displayName}</h2>
-                <p className="text-sm text-gray-500">{customer.email}</p>
+                <h2 className="font-medium text-gray-900 text-lg break-all">{displayName}</h2>
+                <p className="text-sm text-gray-500 break-all">{displayEmail}</p>
               </div>
 
               <nav className="p-3 space-y-1">
@@ -301,28 +317,40 @@ export default function AccountPage() {
                     exit={{ opacity: 0, y: -10 }}
                   >
                     <h2 className="text-xl font-serif text-gray-900 border-b-2 border-[#b59a5c] pb-1 mb-8 inline-block">Profile Details</h2>
-                    <div className="max-w-md space-y-6">
-                      <div className="grid grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">First Name</label>
-                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.firstName}</div>
+                    {customer ? (
+                      <div className="max-w-md space-y-6">
+                        <div className="grid grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">First Name</label>
+                            <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.firstName}</div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Last Name</label>
+                            <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.lastName}</div>
+                          </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Last Name</label>
-                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.lastName}</div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
+                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.email}</div>
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
-                        <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.email}</div>
+                    ) : (
+                      <div className="max-w-md space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
+                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800 break-all">{sessionEmail}</div>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          You&apos;re signed in with a one-time email code. Create a password-protected account to save your addresses and manage your profile.
+                        </p>
+                        <Link
+                          href="/register"
+                          className="inline-block bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#b59a5c] transition-colors rounded"
+                        >
+                          Create an Account
+                        </Link>
                       </div>
-                      <div className="pt-4 border-t border-gray-100">
-                        <button className="bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#b59a5c] transition-colors rounded">
-                          Edit Profile
-                        </button>
-                        <p className="text-xs text-gray-400 mt-2">Edit profile functionality is coming soon.</p>
-                      </div>
-                    </div>
+                    )}
                   </motion.div>
                 )}
 

@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth/jwt";
 import { getCustomerById, getCustomerOrders } from "@/lib/woocommerce-customer";
-
-interface CustomerOrderLineItem {
-  name: string;
-  quantity: number;
-  total: string;
-}
-
-interface CustomerOrder {
-  id: number;
-  number: string;
-  status: string;
-  total: string;
-  date_created: string;
-  payment_method_title?: string;
-  meta_data?: { key: string; value: string }[];
-  line_items?: CustomerOrderLineItem[];
-}
+import { mapOrderToDTO } from "@/lib/order-dto";
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,28 +51,7 @@ export async function GET(request: NextRequest) {
         isPayingCustomer: customer.is_paying_customer,
         dateCreated: customer.date_created,
       },
-      orders: (orders as CustomerOrder[]).map((order) => {
-        const meta = order.meta_data || [];
-        const charge = meta.find((m) => m.key === "_headless_charge_amount")?.value;
-        const payId = meta.find((m) => m.key === "_razorpay_payment_id")?.value ?? null;
-        return {
-          id: order.id,
-          number: order.number,
-          status: order.status,
-          total: order.total,
-          // Real amount the customer was charged (WC total now matches it too,
-          // but the meta is authoritative for older orders created before the fix).
-          amountPaid: charge ?? order.total,
-          paymentMethod: order.payment_method_title ?? "",
-          paymentId: payId,
-          dateCreated: order.date_created,
-          lineItems: order.line_items?.map((item) => ({
-            name: item.name,
-            quantity: item.quantity,
-            total: item.total,
-          })),
-        };
-      }),
+      orders: (orders as Parameters<typeof mapOrderToDTO>[0][]).map(mapOrderToDTO),
     });
   } catch (error) {
     console.error("Auth me error:", error);

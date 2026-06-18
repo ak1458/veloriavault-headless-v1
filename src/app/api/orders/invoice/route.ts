@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildInvoiceModel } from "@/lib/invoice";
 import { renderInvoicePdf } from "@/lib/invoice-pdf";
 import { verifyToken } from "@/lib/auth/jwt";
+import { readOtpSession } from "@/lib/auth/otp";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,8 @@ function wcAuth(): string {
 export async function GET(request: NextRequest) {
   const token = request.cookies.get("token")?.value;
   const jwtPayload = token ? verifyToken(token) : null;
-  // OTP (guest) session support is added in Phase 2.5.
-  const sessionEmail = jwtPayload?.email;
+  const otp = request.cookies.get("otp_session")?.value;
+  const sessionEmail = jwtPayload?.email ?? (otp ? readOtpSession(otp)?.email : undefined);
 
   const orderId = request.nextUrl.searchParams.get("orderId");
   if (!sessionEmail || !orderId) {
