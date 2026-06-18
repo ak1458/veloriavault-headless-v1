@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncPaidOrderToShiprocket } from "@/lib/order-fulfillment";
+import { getRazorpayOrder } from "@/lib/razorpay";
 import crypto from "crypto";
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
@@ -67,6 +68,29 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[UpdatePayment] Signature verified for order ${orderId}`);
+
+      // Bind the payment to THIS WooCommerce order: the Razorpay order's
+      // notes.order_id (set in create-order) must match the orderId being
+      // marked paid. Prevents replaying a valid signature onto another order.
+      // Fail-OPEN on transient API error (the webhook is the authoritative guard).
+      try {
+        const rzp = await getRazorpayOrder(razorpayOrderId);
+        const notedOrderId = rzp.order?.notes?.order_id;
+        if (rzp.ok && notedOrderId && String(notedOrderId) !== String(orderId)) {
+          console.error(
+            `[UpdatePayment] Payment ${paymentId} is bound to order ${notedOrderId}, not ${orderId}`,
+          );
+          return NextResponse.json(
+            { error: "Payment does not match this order" },
+            { status: 403 },
+          );
+        }
+      } catch (e) {
+        console.warn(
+          "[UpdatePayment] Order-binding check skipped (non-fatal):",
+          e instanceof Error ? e.message : e,
+        );
+      }
 
       // Defense-in-depth: confirm Razorpay actually captured at least the
       // server-authoritative charge amount stored on the order. Fail-OPEN on any
