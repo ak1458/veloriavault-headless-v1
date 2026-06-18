@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createShiprocketOrder } from "@/lib/shiprocket";
+import { syncPaidOrderToShiprocket } from "@/lib/order-fulfillment";
 import crypto from "crypto";
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
@@ -158,51 +158,10 @@ export async function POST(request: NextRequest) {
 
     // ========================================
     // SHIPROCKET SYNC (Prepaid orders sync after payment)
+    // Shared with the Razorpay webhook so a captured payment is always fulfilled.
     // ========================================
     if (status === "completed" && order.status === "processing") {
-      // Extract customer details from the WooCommerce order
-      const billing = order.billing || {};
-      const items = (order.line_items || []).map((item: { product_id: number; name: string; quantity: number; price: string; sku?: string }) => ({
-        id: item.product_id,
-        name: item.name,
-        quantity: item.quantity,
-        price: parseFloat(item.price) || 0,
-        sku: item.sku,
-      }));
-
-      const subtotal = parseFloat(order.total || "0");
-      const shippingTotal = (order.shipping_lines || []).reduce(
-        (sum: number, line: { total: string }) => sum + parseFloat(line.total || "0"),
-        0
-      );
-
-      // BUG-04 FIX: Calculate actual discount from order metadata
-      const totalSavingsMeta = (order.meta_data || []).find(
-        (m: { key: string; value: string }) => m.key === "_total_savings"
-      );
-      const actualDiscount = totalSavingsMeta ? parseFloat(totalSavingsMeta.value) || 0 : 0;
-
-      // Fire-and-forget — don't block payment confirmation
-      createShiprocketOrder({
-        orderId: order.id,
-        orderDate: new Date().toISOString().split("T")[0] + " " + new Date().toTimeString().split(" ")[0],
-        customer: {
-          firstName: billing.first_name || "",
-          lastName: billing.last_name || "",
-          email: billing.email || "",
-          phone: billing.phone || "",
-          address: billing.address_1 || "",
-          city: billing.city || "",
-          state: billing.state || "",
-          postalCode: billing.postcode || "",
-        },
-        items,
-        paymentMethod: "prepaid",
-        subtotal,
-        shippingCharges: shippingTotal,
-        discount: actualDiscount,
-        total: subtotal,
-      }).catch((err) => console.error("[UpdatePayment] Shiprocket sync failed (non-blocking):", err));
+      syncPaidOrderToShiprocket(order);
     }
 
     return NextResponse.json({
