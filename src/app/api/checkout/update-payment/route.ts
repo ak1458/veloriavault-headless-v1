@@ -129,6 +129,9 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         status: status === "completed" ? "processing" : "pending",
+        // Mark the order genuinely paid so WooCommerce records date_paid and the
+        // Razorpay payment id as the transaction id (was previously only a meta).
+        ...(status === "completed" ? { set_paid: true, transaction_id: paymentId } : {}),
         meta_data: [
           {
             key: "_razorpay_payment_id",
