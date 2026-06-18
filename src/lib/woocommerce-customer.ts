@@ -186,6 +186,43 @@ export async function getCustomerOrders(customerId: number): Promise<unknown[]> 
   }
 }
 
+// Pure filter: keep only orders whose billing email matches (case-insensitive).
+export function filterOrdersByEmail<T extends { billing?: { email?: string } }>(
+  orders: T[],
+  email: string,
+): T[] {
+  const e = email.toLowerCase().trim();
+  return orders.filter((o) => (o.billing?.email || "").toLowerCase().trim() === e);
+}
+
+// Fetch all orders for a billing email (covers guest orders with customer_id 0).
+// WooCommerce `search` matches billing email among other fields, so we filter
+// the result to exact email matches to avoid partial/false positives.
+export async function getOrdersByEmail(email: string): Promise<unknown[]> {
+  try {
+    if (!WC_API_URL || !CONSUMER_KEY || !CONSUMER_SECRET) {
+      return [];
+    }
+    const response = await fetch(
+      `${WC_API_URL}/orders?search=${encodeURIComponent(email)}&per_page=100`,
+      {
+        headers: {
+          Authorization: getAuthHeader(),
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const orders = (await response.json()) as Array<{ billing?: { email?: string } }>;
+    return filterOrdersByEmail(orders, email);
+  } catch (error) {
+    console.error("Error fetching orders by email:", error);
+    return [];
+  }
+}
+
 // Note: WooCommerce doesn't provide a direct login API with username/password
 // We verify the customer exists and use JWT for session management
 export async function verifyCustomerCredentials(
