@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth/jwt";
 import { getCustomerById, getCustomerOrders } from "@/lib/woocommerce-customer";
-
-interface CustomerOrderLineItem {
-  name: string;
-  quantity: number;
-  total: string;
-}
-
-interface CustomerOrder {
-  id: number;
-  number: string;
-  status: string;
-  total: string;
-  date_created: string;
-  line_items?: CustomerOrderLineItem[];
-}
+import { mapOrderToDTO } from "@/lib/order-dto";
 
 export async function GET(request: NextRequest) {
   try {
@@ -65,18 +51,7 @@ export async function GET(request: NextRequest) {
         isPayingCustomer: customer.is_paying_customer,
         dateCreated: customer.date_created,
       },
-      orders: (orders as CustomerOrder[]).map((order) => ({
-        id: order.id,
-        number: order.number,
-        status: order.status,
-        total: order.total,
-        dateCreated: order.date_created,
-        lineItems: order.line_items?.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          total: item.total,
-        })),
-      })),
+      orders: (orders as Parameters<typeof mapOrderToDTO>[0][]).map(mapOrderToDTO),
     });
   } catch (error) {
     console.error("Auth me error:", error);

@@ -95,20 +95,17 @@ function cleanupExpiredRecords(): void {
  * Get client IP from request
  */
 export function getClientIP(request: Request): string {
-  // Try various headers to get real client IP
-  const forwarded = request.headers.get("x-forwarded-for");
+  // Prefer x-real-ip (platform-set, not client-spoofable on Vercel). Fall back
+  // to the LAST x-forwarded-for hop (added by the trusted proxy), not the first
+  // (which a client can prepend to evade rate limits).
   const realIP = request.headers.get("x-real-ip");
-  
+  if (realIP) return realIP.trim();
+
+  const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    // X-Forwarded-For can contain multiple IPs, take the first one
-    return forwarded.split(",")[0].trim();
+    const parts = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
   }
-  
-  if (realIP) {
-    return realIP;
-  }
-  
-  // Fallback to a default identifier
   return "unknown";
 }
 

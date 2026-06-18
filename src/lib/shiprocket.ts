@@ -198,6 +198,19 @@ export async function createShiprocketOrder(params: {
 
     console.log(`[Shiprocket] Order #${params.orderId} synced → Shiprocket ID: ${data.order_id}`);
 
+    // Persist Shiprocket identifiers on the WC order so cancellation and live
+    // tracking can resolve them later. Non-fatal if it fails.
+    try {
+      const { updateWcOrder } = await import("@/lib/woocommerce-orders");
+      const meta: { key: string; value: string }[] = [
+        { key: "_shiprocket_order_id", value: String(data.order_id) },
+      ];
+      if (data.shipment_id) meta.push({ key: "_shiprocket_shipment_id", value: String(data.shipment_id) });
+      await updateWcOrder(params.orderId, { meta_data: meta });
+    } catch (e) {
+      console.error("[Shiprocket] Failed to persist ids to WC order:", e instanceof Error ? e.message : e);
+    }
+
     return {
       success: true,
       shiprocketOrderId: data.order_id,
@@ -208,6 +221,45 @@ export async function createShiprocketOrder(params: {
       success: false,
       error: error instanceof Error ? error.message : "Unknown Shiprocket error",
     };
+  }
+}
+
+export interface NormalizedTracking {
+  status: string;
+  awb: string | null;
+  etaDate: string | null;
+  checkpoints: { date: string; activity: string; location: string }[];
+}
+
+/**
+ * Fetch live tracking for a Shiprocket shipment and normalize it. Best-effort:
+ * returns null on any error so callers can fall back to the WC order status.
+ */
+export async function trackByShipmentId(shipmentId: string | number): Promise<NormalizedTracking | null> {
+  try {
+    const res = await shiprocketFetch(`/courier/track/shipment/${encodeURIComponent(String(shipmentId))}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Shiprocket nests the payload under the shipment id or `tracking_data`.
+    const td =
+      data?.tracking_data ||
+      (typeof data === "object" ? Object.values(data)[0] : null) ||
+      {};
+    const track = Array.isArray(td.shipment_track) ? td.shipment_track[0] : undefined;
+    const activities = Array.isArray(td.shipment_track_activities) ? td.shipment_track_activities : [];
+    return {
+      status: track?.current_status || td.shipment_status || "In Transit",
+      awb: track?.awb_code || null,
+      etaDate: track?.edd || td.etd || null,
+      checkpoints: activities.map((a: { date?: string; activity?: string; location?: string }) => ({
+        date: a.date || "",
+        activity: a.activity || "",
+        location: a.location || "",
+      })),
+    };
+  } catch (e) {
+    console.error("[Shiprocket] Tracking error:", e instanceof Error ? e.message : e);
+    return null;
   }
 }
 

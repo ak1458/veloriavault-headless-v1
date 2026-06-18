@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createShiprocketOrder } from "@/lib/shiprocket";
+import { syncPaidOrderToShiprocket } from "@/lib/order-fulfillment";
+import { getRazorpayOrder } from "@/lib/razorpay";
 import crypto from "crypto";
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
@@ -68,6 +69,29 @@ export async function POST(request: NextRequest) {
 
       console.log(`[UpdatePayment] Signature verified for order ${orderId}`);
 
+      // Bind the payment to THIS WooCommerce order: the Razorpay order's
+      // notes.order_id (set in create-order) must match the orderId being
+      // marked paid. Prevents replaying a valid signature onto another order.
+      // Fail-OPEN on transient API error (the webhook is the authoritative guard).
+      try {
+        const rzp = await getRazorpayOrder(razorpayOrderId);
+        const notedOrderId = rzp.order?.notes?.order_id;
+        if (rzp.ok && notedOrderId && String(notedOrderId) !== String(orderId)) {
+          console.error(
+            `[UpdatePayment] Payment ${paymentId} is bound to order ${notedOrderId}, not ${orderId}`,
+          );
+          return NextResponse.json(
+            { error: "Payment does not match this order" },
+            { status: 403 },
+          );
+        }
+      } catch (e) {
+        console.warn(
+          "[UpdatePayment] Order-binding check skipped (non-fatal):",
+          e instanceof Error ? e.message : e,
+        );
+      }
+
       // Defense-in-depth: confirm Razorpay actually captured at least the
       // server-authoritative charge amount stored on the order. Fail-OPEN on any
       // API/parse error so a transient outage never blocks a legitimate paid order.
@@ -129,6 +153,9 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         status: status === "completed" ? "processing" : "pending",
+        // Mark the order genuinely paid so WooCommerce records date_paid and the
+        // Razorpay payment id as the transaction id (was previously only a meta).
+        ...(status === "completed" ? { set_paid: true, transaction_id: paymentId } : {}),
         meta_data: [
           {
             key: "_razorpay_payment_id",
@@ -155,51 +182,10 @@ export async function POST(request: NextRequest) {
 
     // ========================================
     // SHIPROCKET SYNC (Prepaid orders sync after payment)
+    // Shared with the Razorpay webhook so a captured payment is always fulfilled.
     // ========================================
     if (status === "completed" && order.status === "processing") {
-      // Extract customer details from the WooCommerce order
-      const billing = order.billing || {};
-      const items = (order.line_items || []).map((item: { product_id: number; name: string; quantity: number; price: string; sku?: string }) => ({
-        id: item.product_id,
-        name: item.name,
-        quantity: item.quantity,
-        price: parseFloat(item.price) || 0,
-        sku: item.sku,
-      }));
-
-      const subtotal = parseFloat(order.total || "0");
-      const shippingTotal = (order.shipping_lines || []).reduce(
-        (sum: number, line: { total: string }) => sum + parseFloat(line.total || "0"),
-        0
-      );
-
-      // BUG-04 FIX: Calculate actual discount from order metadata
-      const totalSavingsMeta = (order.meta_data || []).find(
-        (m: { key: string; value: string }) => m.key === "_total_savings"
-      );
-      const actualDiscount = totalSavingsMeta ? parseFloat(totalSavingsMeta.value) || 0 : 0;
-
-      // Fire-and-forget — don't block payment confirmation
-      createShiprocketOrder({
-        orderId: order.id,
-        orderDate: new Date().toISOString().split("T")[0] + " " + new Date().toTimeString().split(" ")[0],
-        customer: {
-          firstName: billing.first_name || "",
-          lastName: billing.last_name || "",
-          email: billing.email || "",
-          phone: billing.phone || "",
-          address: billing.address_1 || "",
-          city: billing.city || "",
-          state: billing.state || "",
-          postalCode: billing.postcode || "",
-        },
-        items,
-        paymentMethod: "prepaid",
-        subtotal,
-        shippingCharges: shippingTotal,
-        discount: actualDiscount,
-        total: subtotal,
-      }).catch((err) => console.error("[UpdatePayment] Shiprocket sync failed (non-blocking):", err));
+      syncPaidOrderToShiprocket(order);
     }
 
     return NextResponse.json({

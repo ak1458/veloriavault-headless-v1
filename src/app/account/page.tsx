@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package, User, LogOut, ChevronRight, Loader2, Truck, RefreshCw, HelpCircle, CheckCircle2, MapPin } from "lucide-react";
+import { Package, User, LogOut, ChevronRight, Loader2, Truck, RefreshCw, HelpCircle, CheckCircle2, MapPin, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Customer {
@@ -20,8 +20,20 @@ interface Order {
   number: string;
   status: string;
   total: string;
+  amountPaid: string;
+  paymentMethod: string;
+  paymentId: string | null;
   dateCreated: string;
   lineItems: { name: string; quantity: number; total: string }[];
+}
+
+interface LiveTracking {
+  status: string;
+  awb: string | null;
+  etaDate: string | null;
+  fallback: boolean;
+  orderStatus: string;
+  checkpoints: { date: string; activity: string; location: string }[];
 }
 
 type TabType = 'orders' | 'profile' | 'track' | 'returns' | 'support';
@@ -29,20 +41,31 @@ type TabType = 'orders' | 'profile' | 'track' | 'returns' | 'support';
 export default function AccountPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('orders');
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [isSearchingTracking, setIsSearchingTracking] = useState(false);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [liveTracking, setLiveTracking] = useState<LiveTracking | null>(null);
 
-  const handleTrackOrder = (order: Order) => {
+  const handleTrackOrder = async (order: Order) => {
     setActiveTab('track');
     setTrackingOrder(order);
+    setLiveTracking(null);
     setIsSearchingTracking(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch(`/api/orders/track-live?orderId=${order.id}`);
+      if (res.ok) {
+        setLiveTracking(await res.json());
+      }
+    } catch {
+      // fall back to status-only view
+    } finally {
       setIsSearchingTracking(false);
-    }, 2500);
+    }
   };
 
   const getStatusStep = (status: string) => {
@@ -56,18 +79,25 @@ export default function AccountPage() {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const response = await fetch("/api/auth/me");
-      const data = await response.json();
-
+      const response = await fetch("/api/account/orders");
       if (!response.ok) {
         router.push("/login");
         return;
       }
-
-      setCustomer(data.customer);
+      const data = await response.json();
       setOrders(data.orders || []);
+      setSessionEmail(data.email || null);
+
+      // Registered customers also get their full profile for the card + profile tab.
+      if (data.sessionType === "customer") {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const me = await meRes.json();
+          setCustomer(me.customer);
+        }
+      }
     } catch {
-      setError("Failed to load profile");
+      setError("Failed to load account");
     } finally {
       setLoading(false);
     }
@@ -83,6 +113,33 @@ export default function AccountPage() {
     router.refresh();
   };
 
+  const handleCancel = async (order: Order) => {
+    if (!window.confirm(`Cancel order #${order.number}? If it was prepaid, your payment will be refunded.`)) {
+      return;
+    }
+    setCancellingId(order.id);
+    try {
+      const res = await fetch("/api/orders/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.alert(data.error || "Could not cancel this order.");
+      } else {
+        window.alert(data.refunded ? "Order cancelled. Your refund has been initiated." : "Order cancelled.");
+        await fetchProfile();
+      }
+    } catch {
+      window.alert("Something went wrong. Please try again.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const isCancellable = (status: string) => ["pending", "processing", "on-hold"].includes(status.toLowerCase());
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#faf8f5] flex items-center justify-center">
@@ -91,9 +148,15 @@ export default function AccountPage() {
     );
   }
 
-  if (!customer) {
+  // Allow both registered-customer and guest (OTP) sessions.
+  if (!customer && !sessionEmail) {
     return null;
   }
+
+  const displayName = customer?.displayName || sessionEmail || "Guest";
+  const displayEmail = customer?.email || sessionEmail || "";
+  const firstInitial = (customer?.firstName || sessionEmail || "G").charAt(0).toUpperCase();
+  const greetingName = customer?.firstName || sessionEmail || "there";
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
@@ -111,7 +174,7 @@ export default function AccountPage() {
         
         <div className="mb-8">
           <h1 className="text-3xl font-serif text-gray-900 mb-2">My Account</h1>
-          <p className="text-gray-500">Welcome back, {customer.firstName}</p>
+          <p className="text-gray-500">Welcome back, {greetingName}</p>
           {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
         </div>
 
@@ -122,11 +185,11 @@ export default function AccountPage() {
               <div className="p-6 border-b border-gray-100 text-center flex flex-col items-center">
                 <div className="w-20 h-20 bg-[#fbf9f4] rounded-full flex items-center justify-center mb-4 border border-[#eee7d5]">
                   <span className="text-3xl font-serif text-[#b59a5c]">
-                    {customer.firstName.charAt(0).toUpperCase()}
+                    {firstInitial}
                   </span>
                 </div>
-                <h2 className="font-medium text-gray-900 text-lg">{customer.displayName}</h2>
-                <p className="text-sm text-gray-500">{customer.email}</p>
+                <h2 className="font-medium text-gray-900 text-lg break-all">{displayName}</h2>
+                <p className="text-sm text-gray-500 break-all">{displayEmail}</p>
               </div>
 
               <nav className="p-3 space-y-1">
@@ -150,11 +213,10 @@ export default function AccountPage() {
                 </button>
                 <button
                   onClick={() => {
-                    setActiveTab('track');
                     if (!trackingOrder && orders.length > 0) {
-                      setTrackingOrder(orders[0]); // Auto select most recent order
-                      setIsSearchingTracking(true);
-                      setTimeout(() => setIsSearchingTracking(false), 2500);
+                      handleTrackOrder(orders[0]); // Auto select + track most recent order
+                    } else {
+                      setActiveTab('track');
                     }
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
@@ -247,8 +309,11 @@ export default function AccountPage() {
                                   {order.status}
                                 </span>
                                 <span className="font-bold text-gray-900 text-lg">
-                                  ₹{parseFloat(order.total).toLocaleString("en-IN")}
+                                  ₹{parseFloat(order.amountPaid).toLocaleString("en-IN")}
                                 </span>
+                                {order.paymentMethod && (
+                                  <span className="text-[11px] text-gray-400">Paid via {order.paymentMethod}</span>
+                                )}
                               </div>
                             </div>
 
@@ -258,19 +323,37 @@ export default function AccountPage() {
                               </p>
                               
                               <div className="flex flex-wrap gap-3">
-                                <button 
+                                <button
                                   onClick={() => handleTrackOrder(order)}
                                   className="text-xs font-bold text-[#b59a5c] uppercase tracking-wider hover:text-black flex items-center gap-1"
                                 >
                                   <Truck size={14} /> Track
                                 </button>
+                                <a
+                                  href={`/api/orders/invoice?orderId=${order.id}`}
+                                  className="text-xs font-bold text-gray-500 uppercase tracking-wider hover:text-black flex items-center gap-1"
+                                >
+                                  <FileText size={14} /> Invoice
+                                </a>
                                 {(order.status === 'completed' || order.status === 'processing') && (
-                                  <Link 
-                                    href={`/account/return/${order.number}`}
+                                  <Link
+                                    href={`/account/return/${order.id}`}
                                     className="text-xs font-bold text-gray-500 uppercase tracking-wider hover:text-red-500 flex items-center gap-1"
                                   >
                                     <RefreshCw size={14} /> Request Return
                                   </Link>
+                                )}
+                                {isCancellable(order.status) && (
+                                  <button
+                                    onClick={() => handleCancel(order)}
+                                    disabled={cancellingId === order.id}
+                                    className="text-xs font-bold text-gray-500 uppercase tracking-wider hover:text-red-600 flex items-center gap-1 disabled:opacity-50"
+                                  >
+                                    {cancellingId === order.id
+                                      ? <Loader2 size={14} className="animate-spin" />
+                                      : <RefreshCw size={14} />}
+                                    Cancel
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -289,28 +372,40 @@ export default function AccountPage() {
                     exit={{ opacity: 0, y: -10 }}
                   >
                     <h2 className="text-xl font-serif text-gray-900 border-b-2 border-[#b59a5c] pb-1 mb-8 inline-block">Profile Details</h2>
-                    <div className="max-w-md space-y-6">
-                      <div className="grid grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">First Name</label>
-                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.firstName}</div>
+                    {customer ? (
+                      <div className="max-w-md space-y-6">
+                        <div className="grid grid-cols-2 gap-6">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">First Name</label>
+                            <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.firstName}</div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Last Name</label>
+                            <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.lastName}</div>
+                          </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Last Name</label>
-                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.lastName}</div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
+                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.email}</div>
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
-                        <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800">{customer.email}</div>
+                    ) : (
+                      <div className="max-w-md space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
+                          <div className="p-3 bg-gray-50 border border-gray-200 rounded text-gray-800 break-all">{sessionEmail}</div>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          You&apos;re signed in with a one-time email code. Create a password-protected account to save your addresses and manage your profile.
+                        </p>
+                        <Link
+                          href="/register"
+                          className="inline-block bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#b59a5c] transition-colors rounded"
+                        >
+                          Create an Account
+                        </Link>
                       </div>
-                      <div className="pt-4 border-t border-gray-100">
-                        <button className="bg-black text-white px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#b59a5c] transition-colors rounded">
-                          Edit Profile
-                        </button>
-                        <p className="text-xs text-gray-400 mt-2">Edit profile functionality is coming soon.</p>
-                      </div>
-                    </div>
+                    )}
                   </motion.div>
                 )}
 
@@ -397,14 +492,19 @@ export default function AccountPage() {
                                 <div>
                                   <p className="text-sm text-gray-500 mb-1">Order #{trackingOrder.number}</p>
                                   <h2 className="text-2xl font-serif text-gray-900 flex items-center gap-2 capitalize">
-                                    {trackingOrder.status}
-                                    {(trackingOrder.status === "completed" || trackingOrder.status === "delivered") && <CheckCircle2 className="text-green-500" size={24} />}
+                                    {liveTracking && !liveTracking.fallback ? liveTracking.status : trackingOrder.status}
+                                    {(trackingOrder.status === "completed" || (liveTracking?.status || "").toLowerCase() === "delivered") && <CheckCircle2 className="text-green-500" size={24} />}
                                   </h2>
+                                  {liveTracking?.awb && (
+                                    <p className="text-xs text-gray-400 mt-1">AWB: {liveTracking.awb}</p>
+                                  )}
                                 </div>
                                 <div className="bg-white px-5 py-3 rounded-lg border border-gray-100 shadow-sm text-center md:text-right">
                                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Expected Delivery</p>
                                   <p className="font-bold text-[#b59a5c] text-lg">
-                                    {new Date(Date.now() + 86400000 * 3).toLocaleDateString("en-IN")}
+                                    {liveTracking?.etaDate
+                                      ? new Date(liveTracking.etaDate).toLocaleDateString("en-IN")
+                                      : "Calculating…"}
                                   </p>
                                 </div>
                               </div>
@@ -445,6 +545,31 @@ export default function AccountPage() {
                                     })}
                                   </div>
                                 </div>
+
+                                {liveTracking && !liveTracking.fallback && liveTracking.checkpoints.length > 0 && (
+                                  <div className="mt-4 border-t border-gray-100 pt-6">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Shipment Activity</h4>
+                                    <ol className="space-y-4">
+                                      {liveTracking.checkpoints.map((c, i) => (
+                                        <li key={i} className="flex gap-3">
+                                          <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${i === 0 ? "bg-[#b59a5c]" : "bg-gray-300"}`} />
+                                          <div>
+                                            <p className="text-sm text-gray-800">{c.activity}</p>
+                                            <p className="text-xs text-gray-400">
+                                              {c.location ? `${c.location} · ` : ""}{c.date}
+                                            </p>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
+                                )}
+
+                                {liveTracking?.fallback && (
+                                  <p className="mt-4 text-xs text-gray-400 text-center">
+                                    Live courier tracking will appear here once your order ships.
+                                  </p>
+                                )}
                               </div>
                             </motion.div>
                           )}
