@@ -27,13 +27,21 @@ interface Order {
   lineItems: { name: string; quantity: number; total: string }[];
 }
 
+interface LiveTracking {
+  status: string;
+  awb: string | null;
+  etaDate: string | null;
+  fallback: boolean;
+  orderStatus: string;
+  checkpoints: { date: string; activity: string; location: string }[];
+}
+
 type TabType = 'orders' | 'profile' | 'track' | 'returns' | 'support';
 
 export default function AccountPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [sessionType, setSessionType] = useState<"customer" | "guest" | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +49,23 @@ export default function AccountPage() {
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [isSearchingTracking, setIsSearchingTracking] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [liveTracking, setLiveTracking] = useState<LiveTracking | null>(null);
 
-  const handleTrackOrder = (order: Order) => {
+  const handleTrackOrder = async (order: Order) => {
     setActiveTab('track');
     setTrackingOrder(order);
+    setLiveTracking(null);
     setIsSearchingTracking(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch(`/api/orders/track-live?orderId=${order.id}`);
+      if (res.ok) {
+        setLiveTracking(await res.json());
+      }
+    } catch {
+      // fall back to status-only view
+    } finally {
       setIsSearchingTracking(false);
-    }, 2500);
+    }
   };
 
   const getStatusStep = (status: string) => {
@@ -70,7 +87,6 @@ export default function AccountPage() {
       const data = await response.json();
       setOrders(data.orders || []);
       setSessionEmail(data.email || null);
-      setSessionType(data.sessionType || null);
 
       // Registered customers also get their full profile for the card + profile tab.
       if (data.sessionType === "customer") {
@@ -197,11 +213,10 @@ export default function AccountPage() {
                 </button>
                 <button
                   onClick={() => {
-                    setActiveTab('track');
                     if (!trackingOrder && orders.length > 0) {
-                      setTrackingOrder(orders[0]); // Auto select most recent order
-                      setIsSearchingTracking(true);
-                      setTimeout(() => setIsSearchingTracking(false), 2500);
+                      handleTrackOrder(orders[0]); // Auto select + track most recent order
+                    } else {
+                      setActiveTab('track');
                     }
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
@@ -477,14 +492,19 @@ export default function AccountPage() {
                                 <div>
                                   <p className="text-sm text-gray-500 mb-1">Order #{trackingOrder.number}</p>
                                   <h2 className="text-2xl font-serif text-gray-900 flex items-center gap-2 capitalize">
-                                    {trackingOrder.status}
-                                    {(trackingOrder.status === "completed" || trackingOrder.status === "delivered") && <CheckCircle2 className="text-green-500" size={24} />}
+                                    {liveTracking && !liveTracking.fallback ? liveTracking.status : trackingOrder.status}
+                                    {(trackingOrder.status === "completed" || (liveTracking?.status || "").toLowerCase() === "delivered") && <CheckCircle2 className="text-green-500" size={24} />}
                                   </h2>
+                                  {liveTracking?.awb && (
+                                    <p className="text-xs text-gray-400 mt-1">AWB: {liveTracking.awb}</p>
+                                  )}
                                 </div>
                                 <div className="bg-white px-5 py-3 rounded-lg border border-gray-100 shadow-sm text-center md:text-right">
                                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Expected Delivery</p>
                                   <p className="font-bold text-[#b59a5c] text-lg">
-                                    {new Date(Date.now() + 86400000 * 3).toLocaleDateString("en-IN")}
+                                    {liveTracking?.etaDate
+                                      ? new Date(liveTracking.etaDate).toLocaleDateString("en-IN")
+                                      : "Calculating…"}
                                   </p>
                                 </div>
                               </div>
@@ -525,6 +545,31 @@ export default function AccountPage() {
                                     })}
                                   </div>
                                 </div>
+
+                                {liveTracking && !liveTracking.fallback && liveTracking.checkpoints.length > 0 && (
+                                  <div className="mt-4 border-t border-gray-100 pt-6">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Shipment Activity</h4>
+                                    <ol className="space-y-4">
+                                      {liveTracking.checkpoints.map((c, i) => (
+                                        <li key={i} className="flex gap-3">
+                                          <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${i === 0 ? "bg-[#b59a5c]" : "bg-gray-300"}`} />
+                                          <div>
+                                            <p className="text-sm text-gray-800">{c.activity}</p>
+                                            <p className="text-xs text-gray-400">
+                                              {c.location ? `${c.location} · ` : ""}{c.date}
+                                            </p>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
+                                )}
+
+                                {liveTracking?.fallback && (
+                                  <p className="mt-4 text-xs text-gray-400 text-center">
+                                    Live courier tracking will appear here once your order ships.
+                                  </p>
+                                )}
                               </div>
                             </motion.div>
                           )}
