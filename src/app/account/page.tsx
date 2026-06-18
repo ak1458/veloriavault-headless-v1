@@ -40,6 +40,7 @@ export default function AccountPage() {
   const [activeTab, setActiveTab] = useState<TabType>('orders');
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [isSearchingTracking, setIsSearchingTracking] = useState(false);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
 
   const handleTrackOrder = (order: Order) => {
     setActiveTab('track');
@@ -95,6 +96,33 @@ export default function AccountPage() {
     router.push("/");
     router.refresh();
   };
+
+  const handleCancel = async (order: Order) => {
+    if (!window.confirm(`Cancel order #${order.number}? If it was prepaid, your payment will be refunded.`)) {
+      return;
+    }
+    setCancellingId(order.id);
+    try {
+      const res = await fetch("/api/orders/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.alert(data.error || "Could not cancel this order.");
+      } else {
+        window.alert(data.refunded ? "Order cancelled. Your refund has been initiated." : "Order cancelled.");
+        await fetchProfile();
+      }
+    } catch {
+      window.alert("Something went wrong. Please try again.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const isCancellable = (status: string) => ["pending", "processing", "on-hold"].includes(status.toLowerCase());
 
   if (loading) {
     return (
@@ -293,12 +321,24 @@ export default function AccountPage() {
                                   <FileText size={14} /> Invoice
                                 </a>
                                 {(order.status === 'completed' || order.status === 'processing') && (
-                                  <Link 
-                                    href={`/account/return/${order.number}`}
+                                  <Link
+                                    href={`/account/return/${order.id}`}
                                     className="text-xs font-bold text-gray-500 uppercase tracking-wider hover:text-red-500 flex items-center gap-1"
                                   >
                                     <RefreshCw size={14} /> Request Return
                                   </Link>
+                                )}
+                                {isCancellable(order.status) && (
+                                  <button
+                                    onClick={() => handleCancel(order)}
+                                    disabled={cancellingId === order.id}
+                                    className="text-xs font-bold text-gray-500 uppercase tracking-wider hover:text-red-600 flex items-center gap-1 disabled:opacity-50"
+                                  >
+                                    {cancellingId === order.id
+                                      ? <Loader2 size={14} className="animate-spin" />
+                                      : <RefreshCw size={14} />}
+                                    Cancel
+                                  </button>
                                 )}
                               </div>
                             </div>
