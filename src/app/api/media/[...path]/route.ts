@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { safeMediaPath } from "@/lib/media-path";
 
 /**
  * Media proxy that fetches WordPress static files from the Hostinger server.
@@ -22,7 +23,11 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
-  const filePath = `/wp-content/${path.join("/")}`;
+  const safe = safeMediaPath(path);
+  if (!safe) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+  const filePath = `/wp-content/${safe}`;
 
   try {
     // Use dynamic import to avoid build-time resolution issues
