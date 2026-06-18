@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { calculateDiscounts } from "@/lib/coupon-calculator";
+import { buildOrderFeeLines } from "@/lib/order-fees";
 import { getProductsByIds, getProductById } from "@/lib/woocommerce";
 import { verifyToken } from "@/lib/auth/jwt";
 import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
@@ -235,10 +236,6 @@ export async function POST(request: NextRequest) {
       luckyDrawDiscount,
     });
 
-    const couponLines = calculation.appliedCoupons.map((c) => ({
-      code: c.coupon.code,
-    }));
-
     // ========================================
     // CREATE WOOCOMMERCE ORDER
     // ========================================
@@ -289,14 +286,12 @@ export async function POST(request: NextRequest) {
           total: calculation.shippingCost.toString(),
         },
       ],
-      coupon_lines: couponLines,
-      fee_lines: calculation.codFee > 0 ? [
-        {
-          name: "Cash on Delivery Fee",
-          total: calculation.codFee.toString(),
-          tax_status: "taxable",
-        },
-      ] : [],
+      // All site discounts (tier/prepaid/coupons/lucky-draw) are written as
+      // itemized NEGATIVE fee lines + the positive COD fee, so the WooCommerce
+      // order total equals the real amount charged (== _headless_charge_amount).
+      // Config coupons are NOT WC coupons, so coupon_lines are intentionally
+      // omitted — their value is already inside the negative fee lines.
+      fee_lines: buildOrderFeeLines(calculation),
       meta_data: [
         { key: "_order_source", value: "Next.js Headless" },
         { key: "_is_prepaid", value: validatedData.isPrepaid ? "yes" : "no" },
@@ -314,8 +309,8 @@ export async function POST(request: NextRequest) {
       customer_id: customerId,
     };
 
-    // Create order with retry logic for invalid coupons
-    let response = await fetch(`${WC_API_URL}/orders`, {
+    // Create order. Fee lines never fail coupon validation, so no retry needed.
+    const response = await fetch(`${WC_API_URL}/orders`, {
       method: "POST",
       headers: {
         Authorization: getAuthHeader(),
@@ -323,25 +318,6 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(orderData),
     });
-
-    // Retry without coupons if invalid
-    if (!response.ok) {
-      const errorData = await response.clone().json().catch(() => ({}));
-      if (
-        errorData.code === "woocommerce_rest_invalid_coupon" || 
-        errorData.message?.toLowerCase().includes("does not exist")
-      ) {
-        console.warn("[Checkout] Invalid coupon, retrying without coupons...");
-        response = await fetch(`${WC_API_URL}/orders`, {
-          method: "POST",
-          headers: {
-            Authorization: getAuthHeader(),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ ...orderData, coupon_lines: [] }),
-        });
-      }
-    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
