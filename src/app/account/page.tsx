@@ -20,6 +20,9 @@ interface Order {
   number: string;
   status: string;
   total: string;
+  amountPaid: string;
+  paymentMethod: string;
+  paymentId: string | null;
   dateCreated: string;
   lineItems: { name: string; quantity: number; total: string }[];
 }
@@ -247,8 +250,11 @@ export default function AccountPage() {
                                   {order.status}
                                 </span>
                                 <span className="font-bold text-gray-900 text-lg">
-                                  ₹{parseFloat(order.total).toLocaleString("en-IN")}
+                                  ₹{parseFloat(order.amountPaid).toLocaleString("en-IN")}
                                 </span>
+                                {order.paymentMethod && (
+                                  <span className="text-[11px] text-gray-400">Paid via {order.paymentMethod}</span>
+                                )}
                               </div>
                             </div>
 
