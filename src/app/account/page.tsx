@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package, User, LogOut, ChevronRight, Loader2, Truck, RefreshCw, HelpCircle, CheckCircle2, MapPin } from "lucide-react";
+import { Package, User, LogOut, ChevronRight, Loader2, Truck, RefreshCw, HelpCircle, CheckCircle2, MapPin, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Customer {
@@ -264,12 +264,18 @@ export default function AccountPage() {
                               </p>
                               
                               <div className="flex flex-wrap gap-3">
-                                <button 
+                                <button
                                   onClick={() => handleTrackOrder(order)}
                                   className="text-xs font-bold text-[#b59a5c] uppercase tracking-wider hover:text-black flex items-center gap-1"
                                 >
                                   <Truck size={14} /> Track
                                 </button>
+                                <a
+                                  href={`/api/orders/invoice?orderId=${order.id}`}
+                                  className="text-xs font-bold text-gray-500 uppercase tracking-wider hover:text-black flex items-center gap-1"
+                                >
+                                  <FileText size={14} /> Invoice
+                                </a>
                                 {(order.status === 'completed' || order.status === 'processing') && (
                                   <Link 
                                     href={`/account/return/${order.number}`}
