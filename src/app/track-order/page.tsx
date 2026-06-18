@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Package, Search, Loader2, AlertCircle, ChevronRight, Truck, CheckCircle2, MapPin } from "lucide-react";
+import { Package, Search, Loader2, AlertCircle, ChevronRight, Truck, CheckCircle2, MapPin, RefreshCw, FileText, XCircle } from "lucide-react";
 
 interface OrderDetails {
   id: number;
@@ -39,6 +39,71 @@ export default function TrackOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderDetails | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [showReturn, setShowReturn] = useState(false);
+  const [returnReason, setReturnReason] = useState("");
+
+  const isCancellable = (s: string) => ["pending", "processing", "on-hold"].includes(s.toLowerCase());
+  const isReturnable = (s: string) => ["processing", "completed"].includes(s.toLowerCase());
+
+  const handleCancel = async () => {
+    if (!order) return;
+    if (!window.confirm(`Cancel order #${order.number}? If you paid online, your refund is processed automatically to your original payment method.`)) {
+      return;
+    }
+    setActionLoading(true);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/orders/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionMsg({ type: "err", text: data.error || "Could not cancel this order." });
+      } else {
+        setActionMsg({
+          type: "ok",
+          text: data.refunded
+            ? "Order cancelled. Your refund has been initiated to your original payment method."
+            : "Order cancelled.",
+        });
+        setOrder({ ...order, status: "cancelled" });
+      }
+    } catch {
+      setActionMsg({ type: "err", text: "Something went wrong. Please try again." });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!order) return;
+    setActionLoading(true);
+    setActionMsg(null);
+    try {
+      const res = await fetch("/api/orders/return", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, email, reason: returnReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionMsg({ type: "err", text: data.error || "Could not submit your return request." });
+      } else {
+        setActionMsg({ type: "ok", text: "Return request submitted. Our team will email you the next steps." });
+        setShowReturn(false);
+        setReturnReason("");
+      }
+    } catch {
+      setActionMsg({ type: "err", text: "Something went wrong. Please try again." });
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,6 +312,82 @@ export default function TrackOrderPage() {
                   <p className="font-medium">{order.billing.phone}</p>
                 </div>
               </div>
+            </div>
+
+            {/* Order Actions: cancel + refund, return, invoice */}
+            <div className="bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="font-serif text-lg text-gray-900 mb-4">Manage Order</h3>
+
+              {actionMsg && (
+                <div
+                  className={`mb-4 p-3 rounded-lg text-sm border ${
+                    actionMsg.type === "ok"
+                      ? "bg-green-50 border-green-200 text-green-700"
+                      : "bg-red-50 border-red-200 text-red-600"
+                  }`}
+                >
+                  {actionMsg.text}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3">
+                {isCancellable(order.status) && (
+                  <button
+                    onClick={handleCancel}
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-red-200 text-red-600 text-sm font-bold uppercase tracking-wider hover:bg-red-50 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
+                    Cancel & Refund
+                  </button>
+                )}
+
+                {isReturnable(order.status) && (
+                  <button
+                    onClick={() => setShowReturn((v) => !v)}
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700 text-sm font-bold uppercase tracking-wider hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw size={16} /> Request Return
+                  </button>
+                )}
+
+                <a
+                  href={`/api/orders/invoice?orderId=${order.id}&email=${encodeURIComponent(email)}`}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700 text-sm font-bold uppercase tracking-wider hover:bg-gray-50 transition-colors"
+                >
+                  <FileText size={16} /> Download Invoice
+                </a>
+              </div>
+
+              {showReturn && (
+                <form onSubmit={handleReturn} className="mt-5 border-t border-gray-100 pt-5 space-y-3">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Reason for return
+                  </label>
+                  <textarea
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                    rows={3}
+                    minLength={5}
+                    required
+                    placeholder="Tell us what went wrong (damaged, wrong item, not as described, etc.)"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#b59a5c] resize-none text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={actionLoading || returnReason.trim().length < 5}
+                    className="inline-flex items-center gap-2 bg-[#1a1a1a] text-white px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wider hover:bg-[#b59a5c] transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                    Submit Return Request
+                  </button>
+                </form>
+              )}
+
+              <p className="text-xs text-gray-400 mt-4">
+                Orders can be cancelled within 24 hours of placing them (before they ship). Returns can be requested within 7 days of delivery.
+              </p>
             </div>
 
             {/* Progress Tracker */}

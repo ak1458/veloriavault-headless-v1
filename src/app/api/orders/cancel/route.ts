@@ -8,19 +8,30 @@ import { cancelShiprocketOrder } from "@/lib/shiprocket";
 
 export const runtime = "nodejs";
 
-const schema = z.object({ orderId: z.union([z.number(), z.string()]) });
+const schema = z.object({
+  orderId: z.union([z.number(), z.string()]),
+  // Guest path: when there is no logged-in session, the customer proves
+  // ownership with the billing email they used at checkout (same assurance as
+  // order tracking). Ignored when a session is present.
+  email: z.string().email().optional(),
+});
 
 export async function POST(request: NextRequest) {
-  const email = getSessionEmail(request);
-  if (!email) {
-    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
-  }
-
   let orderId: string | number;
+  let bodyEmail: string | undefined;
   try {
-    orderId = schema.parse(await request.json()).orderId;
+    const parsed = schema.parse(await request.json());
+    orderId = parsed.orderId;
+    bodyEmail = parsed.email;
   } catch {
     return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 });
+  }
+
+  // Prefer a verified session email; otherwise fall back to the guest-provided
+  // email, which must match the order's billing email (checked below).
+  const email = getSessionEmail(request) ?? bodyEmail;
+  if (!email) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
   const order = await getWcOrder(orderId);

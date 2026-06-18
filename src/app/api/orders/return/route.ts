@@ -12,23 +12,27 @@ const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "care@veloriavault.com";
 const schema = z.object({
   orderId: z.union([z.number(), z.string()]),
   reason: z.string().trim().min(5, "Please tell us a little about the reason").max(2000),
+  // Guest path: ownership proven by the billing email (matched below).
+  email: z.string().email().optional(),
 });
 
 export async function POST(request: NextRequest) {
-  const email = getSessionEmail(request);
-  if (!email) {
-    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
-  }
-
   let orderId: string | number;
   let reason: string;
+  let bodyEmail: string | undefined;
   try {
     const parsed = schema.parse(await request.json());
     orderId = parsed.orderId;
     reason = parsed.reason;
+    bodyEmail = parsed.email;
   } catch (e) {
     const msg = e instanceof z.ZodError ? e.issues[0]?.message : "Invalid request";
     return NextResponse.json({ success: false, error: msg }, { status: 400 });
+  }
+
+  const email = getSessionEmail(request) ?? bodyEmail;
+  if (!email) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
   const order = await getWcOrder(orderId);

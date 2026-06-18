@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
   const token = request.cookies.get("token")?.value;
   const jwtPayload = token ? verifyToken(token) : null;
   const otp = request.cookies.get("otp_session")?.value;
-  const sessionEmail = jwtPayload?.email ?? (otp ? readOtpSession(otp)?.email : undefined);
+  // Guest path: an `email` query param proves ownership when matched against the
+  // order's billing email below (same assurance as order tracking).
+  const guestEmail = request.nextUrl.searchParams.get("email") || undefined;
+  const sessionEmail = jwtPayload?.email ?? (otp ? readOtpSession(otp)?.email : undefined) ?? guestEmail;
 
   const orderId = request.nextUrl.searchParams.get("orderId");
   if (!sessionEmail || !orderId) {
