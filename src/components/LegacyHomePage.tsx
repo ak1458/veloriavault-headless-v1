@@ -200,18 +200,31 @@ export default async function LegacyHomePage() {
     findProduct(products, ["donna", "chocolate brown"]) ||
     findProduct(products, ["donna"]);
 
-  // Ensure we get the SPECIFIC bags requested as Hot Sellers
-  // Try showcaseProducts (ID-based) first, then fallback to searching by name in the main list
-  let finalShowcaseProducts = showcaseProducts;
-  if (!finalShowcaseProducts.length) {
-    const backupList = [
-      findProduct(products, ["freya"]),
-      findProduct(products, ["amara"]),
-      findProduct(products, ["vanya"]),
-      findProduct(products, ["vivian"]),
-    ].filter((p): p is WCProduct => Boolean(p));
-    
-    finalShowcaseProducts = backupList.length > 0 ? backupList : products.slice(0, 4);
+  // Ensure we get the SPECIFIC bags requested as Hot Sellers, in order.
+  // The ID-based fetch (showcaseProducts) is the source of truth, but any ID
+  // that fails to load (transient API timeout/abort) is silently dropped by
+  // getProductsByIds — which previously shipped a 3-of-4 grid. We now backfill
+  // each missing slot BY NAME from the already-fetched parent product list, so
+  // the grid always reaches 4 as long as the bag exists in the catalog.
+  // NOTE: keep HOT_SELLER_BACKUP_TERMS aligned (by index) with HOT_SELLER_IDS.
+  const HOT_SELLER_BACKUP_TERMS = [["freya"], ["amara"], ["vanya"], ["vivian"]];
+  const showcaseById = new Map(showcaseProducts.map((p) => [p.id, p]));
+  const seenShowcaseIds = new Set<number>();
+  const finalShowcaseProducts: WCProduct[] = [];
+
+  HOT_SELLER_IDS.forEach((id, index) => {
+    const product =
+      showcaseById.get(id) ??
+      findProduct(products, HOT_SELLER_BACKUP_TERMS[index] ?? []);
+    if (product && !seenShowcaseIds.has(product.id)) {
+      seenShowcaseIds.add(product.id);
+      finalShowcaseProducts.push(product);
+    }
+  });
+
+  // Last resort: if everything above failed, show the first few parent products.
+  if (finalShowcaseProducts.length === 0) {
+    products.slice(0, 4).forEach((p) => finalShowcaseProducts.push(p));
   }
 
   return (

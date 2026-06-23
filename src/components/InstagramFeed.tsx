@@ -140,7 +140,7 @@ export default function InstagramFeed({
           className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
         >
           {posts.length > 0 ? (
-            posts.map((post) => {
+            posts.map((post, index) => {
               const failed = failedIds.has(post.id);
               return (
                 <a
@@ -152,8 +152,17 @@ export default function InstagramFeed({
                   title={post.caption}
                 >
                   {failed ? (
-                    <span className="absolute inset-0 flex items-center justify-center">
-                      <Instagram className="w-7 h-7 text-[#b59a5c]" />
+                    /* The WP feed sometimes references Instagram media that no
+                       longer exists on the server (404). Rather than a blank
+                       tile, show a branded card so the grid still reads full. */
+                    <span className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-gradient-to-br from-[#faf8f5] via-white to-[#f7f1e6]">
+                      <Instagram className="w-7 h-7 text-[#b59a5c] mb-2" />
+                      <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-gray-800">
+                        Veloria Vault
+                      </span>
+                      <span className="mt-1 text-[11px] text-gray-500 leading-relaxed">
+                        {FALLBACK_CARDS[index % FALLBACK_CARDS.length]}
+                      </span>
                     </span>
                   ) : (
                     /* Plain <img> loads direct from the browser (~140ms). Do NOT
