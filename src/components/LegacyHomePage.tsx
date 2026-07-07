@@ -147,6 +147,11 @@ export default async function LegacyHomePage() {
     console.error("[HomePage] Error loading data:", error);
   }
 
+  if (products.length === 0 && showcaseProducts.length === 0 && reviews.length === 0) {
+    console.error("[HomePage] CRITICAL: All WooCommerce data fetches returned empty. Refusing to render empty homepage for ISR cache.");
+    throw new Error("Backend API unreachable: refusing to render empty homepage for ISR cache.");
+  }
+
   const tabs = MOST_LOVED_STYLES.tabs.map((tab) => {
     let tabProducts = products.filter((product) =>
       product.categories.some((category) => category.slug === tab.categorySlug),

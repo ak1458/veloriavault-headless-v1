@@ -1,4 +1,4 @@
-import { LEGACY_SITE_URL } from "@/lib/site";
+import { LEGACY_SITE_URL, OUTBOUND_USER_AGENT } from "@/lib/site";
 
 export interface WPPage {
   id: number;
@@ -31,6 +31,7 @@ async function wpFetch<T>(
 
   const response = await fetch(url.toString(), {
     next: { revalidate: 300 },
+    headers: { "User-Agent": OUTBOUND_USER_AGENT },
   });
 
   if (!response.ok) {

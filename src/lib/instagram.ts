@@ -1,3 +1,5 @@
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
+
 export interface InstagramPost {
   id: string;
   url: string;
@@ -15,7 +17,7 @@ export async function getInstagramFeed(): Promise<InstagramPost[]> {
     const response = await fetch(`${storeUrl}/wp-json/veloria/v1/instagram-feed`, {
       next: { revalidate: 3600 },
       headers: {
-        "User-Agent": "VeloriaVault/Next.js (Vercel API Fetcher)",
+        "User-Agent": OUTBOUND_USER_AGENT,
       },
       signal: controller.signal,
     });
@@ -44,7 +46,7 @@ export async function getInstagramFeed(): Promise<InstagramPost[]> {
       const response = await fetch(`${storeUrl}/`, {
         next: { revalidate: 3600 },
         headers: {
-          "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
+          "User-Agent": OUTBOUND_USER_AGENT,
         },
         signal: controller.signal,
       });

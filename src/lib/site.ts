@@ -3,6 +3,9 @@ const LOCAL_WP_CONTENT = "/wp-content";
 export const LEGACY_SITE_URL =
   process.env.NEXT_PUBLIC_LEGACY_SITE_URL || "https://api.veloriavault.com";
 
+export const OUTBOUND_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
 export const LEGACY_GLOBAL_STYLES = [
   "https://fonts.googleapis.com/css?family=Playfair+Display%3A400%2C600%2C500%7CInter%3A400%2C600%7CLato%3A400%2C700&display=swap",
   `${LOCAL_WP_CONTENT}/plugins/elementor/assets/css/frontend.min.css`,

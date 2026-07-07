@@ -1,5 +1,5 @@
 import { rewriteLegacyHtml } from "@/lib/legacy-html";
-import { LEGACY_SITE_URL } from "@/lib/site";
+import { LEGACY_SITE_URL, OUTBOUND_USER_AGENT } from "@/lib/site";
 import {
   getProductReviews,
   type WCProduct,
@@ -185,7 +185,7 @@ async function fetchLegacyProductHtml(product: WCProduct) {
       },
       headers: {
         Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
+        "User-Agent": OUTBOUND_USER_AGENT,
       },
       signal: controller.signal,
     });
@@ -232,7 +232,7 @@ async function postReviewAjax(params: URLSearchParams) {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
+        "User-Agent": OUTBOUND_USER_AGENT,
       },
       body: params.toString(),
       cache: "no-store",
@@ -304,7 +304,7 @@ export async function uploadCustomerReviewMedia(options: {
   const response = await fetch(REVIEW_AJAX_URL, {
     method: "POST",
     headers: {
-      "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
+      "User-Agent": OUTBOUND_USER_AGENT,
     },
     body: formData,
     cache: "no-store",
@@ -338,7 +338,7 @@ export async function deleteCustomerReviewMedia(token: ReviewMediaToken) {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
+      "User-Agent": OUTBOUND_USER_AGENT,
     },
     body: params.toString(),
     cache: "no-store",
@@ -401,7 +401,7 @@ export async function submitCustomerReview(options: {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "User-Agent": "VeloriaVault/Next.js (Vercel Legacy Fetcher)",
+      "User-Agent": OUTBOUND_USER_AGENT,
     },
     body: commentParams.toString(),
     redirect: "manual",

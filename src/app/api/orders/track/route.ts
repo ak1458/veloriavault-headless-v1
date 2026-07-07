@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
 const CONSUMER_KEY = process.env.WC_CONSUMER_KEY?.trim();
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
         headers: {
           Authorization: getAuthHeader(),
           "Content-Type": "application/json",
+          "User-Agent": OUTBOUND_USER_AGENT,
         },
       }
     );

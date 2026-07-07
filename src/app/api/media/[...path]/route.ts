@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { safeMediaPath } from "@/lib/media-path";
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
 
 /**
  * Media proxy that fetches WordPress static files from the Hostinger server.
@@ -46,7 +47,7 @@ export async function GET(
           method: "GET",
           headers: {
             Host: "api.veloriavault.com",
-            "User-Agent": "VeloriaVault-MediaProxy/1.1",
+            "User-Agent": OUTBOUND_USER_AGENT,
           },
           // SNI hostname — makes LiteSpeed match the api.veloriavault.com vhost
           servername: "api.veloriavault.com",

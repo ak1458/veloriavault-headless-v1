@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { LEGACY_SITE_URL } from "@/lib/site";
+import { LEGACY_SITE_URL, OUTBOUND_USER_AGENT } from "@/lib/site";
 
 export interface WCImage {
   id: number;
@@ -319,7 +319,7 @@ async function storeFetch<T>(
     const response = await fetchWithRetry(url.toString(), {
       headers: {
         Accept: "application/json",
-        "User-Agent": "VeloriaVault/Next.js (Vercel Node.js Fetcher)",
+        "User-Agent": OUTBOUND_USER_AGENT,
       },
       ...(options.revalidate === false
         ? { cache: "no-store" as const }
@@ -415,7 +415,7 @@ async function adminFetch<T>(
       headers: {
         Accept: "application/json",
         Authorization: `Basic ${Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString("base64")}`,
-        "User-Agent": "VeloriaVault/Next.js (Vercel Admin Fetcher)",
+        "User-Agent": OUTBOUND_USER_AGENT,
       },
       ...(options.revalidate === false
         ? { cache: "no-store" as const }

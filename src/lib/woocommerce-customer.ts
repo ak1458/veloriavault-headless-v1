@@ -1,11 +1,16 @@
 import { WooCommerceCustomer, CustomerRegisterData } from "@/types/customer";
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
 const CONSUMER_KEY = process.env.WC_CONSUMER_KEY?.trim();
 const CONSUMER_SECRET = process.env.WC_CONSUMER_SECRET?.trim();
 
-function getAuthHeader(): string {
-  return "Basic " + Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString("base64");
+function getAuthHeaders(): Record<string, string> {
+  return {
+    Authorization: "Basic " + Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString("base64"),
+    "Content-Type": "application/json",
+    "User-Agent": OUTBOUND_USER_AGENT,
+  };
 }
 
 // Create a new customer in WooCommerce
@@ -50,10 +55,7 @@ export async function createWCCustomer(data: CustomerRegisterData): Promise<WooC
 
     const response = await fetch(`${WC_API_URL}/customers`, {
       method: "POST",
-      headers: {
-        Authorization: getAuthHeader(),
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(customerData),
     });
 
@@ -81,10 +83,7 @@ export async function getCustomerByEmail(email: string): Promise<WooCommerceCust
     const response = await fetch(
       `${WC_API_URL}/customers?email=${encodeURIComponent(email)}`,
       {
-        headers: {
-          Authorization: getAuthHeader(),
-          "Content-Type": "application/json",
-        },
+        headers: getAuthHeaders(),
       }
     );
 
@@ -109,10 +108,7 @@ export async function getCustomerById(id: number): Promise<WooCommerceCustomer |
     }
 
     const response = await fetch(`${WC_API_URL}/customers/${id}`, {
-      headers: {
-        Authorization: getAuthHeader(),
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -139,10 +135,7 @@ export async function updateCustomer(
 
     const response = await fetch(`${WC_API_URL}/customers/${id}`, {
       method: "PUT",
-      headers: {
-        Authorization: getAuthHeader(),
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
 
@@ -168,10 +161,7 @@ export async function getCustomerOrders(customerId: number): Promise<unknown[]> 
     const response = await fetch(
       `${WC_API_URL}/orders?customer=${customerId}&per_page=100`,
       {
-        headers: {
-          Authorization: getAuthHeader(),
-          "Content-Type": "application/json",
-        },
+        headers: getAuthHeaders(),
       }
     );
 
@@ -206,10 +196,7 @@ export async function getOrdersByEmail(email: string): Promise<unknown[]> {
     const response = await fetch(
       `${WC_API_URL}/orders?search=${encodeURIComponent(email)}&per_page=100`,
       {
-        headers: {
-          Authorization: getAuthHeader(),
-          "Content-Type": "application/json",
-        },
+        headers: getAuthHeaders(),
       },
     );
     if (!response.ok) {

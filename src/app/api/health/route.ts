@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
 
 export async function GET() {
   const wcApiUrl = process.env.WC_API_URL || "not set";
@@ -20,7 +21,7 @@ export async function GET() {
     const response = await fetch(testUrl, { 
       signal: controller.signal,
       cache: "no-store",
-      headers: { "User-Agent": "VeloriaVault/HealthCheck" }
+      headers: { "User-Agent": OUTBOUND_USER_AGENT }
     });
     clearTimeout(timeoutId);
     

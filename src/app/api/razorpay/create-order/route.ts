@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
 
 const createOrderSchema = z.object({
   amount: z.number().positive(),
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
         const wcCtl = new AbortController();
         const wcTimer = setTimeout(() => wcCtl.abort(), 8000);
         const wcRes = await fetch(`${WC_API_URL}/orders/${encodeURIComponent(validated.orderId)}`, {
-          headers: { Authorization: `Basic ${wcAuth}` },
+          headers: { Authorization: `Basic ${wcAuth}`, "User-Agent": OUTBOUND_USER_AGENT },
           signal: wcCtl.signal,
         });
         clearTimeout(wcTimer);

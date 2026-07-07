@@ -3,6 +3,8 @@
  * return, webhook, and live-tracking routes. Credentials read at call time.
  */
 
+import { OUTBOUND_USER_AGENT } from "@/lib/site";
+
 const WC_API_URL = process.env.WC_API_URL?.trim();
 
 function wcAuth(): string {
@@ -32,7 +34,7 @@ export async function getWcOrder(orderId: string | number): Promise<WcOrder | nu
   if (!WC_API_URL) return null;
   try {
     const res = await fetch(`${WC_API_URL}/orders/${encodeURIComponent(String(orderId))}`, {
-      headers: { Authorization: wcAuth() },
+      headers: { Authorization: wcAuth(), "User-Agent": OUTBOUND_USER_AGENT },
     });
     if (!res.ok) return null;
     return (await res.json()) as WcOrder;
@@ -49,7 +51,7 @@ export async function updateWcOrder(
   try {
     const res = await fetch(`${WC_API_URL}/orders/${encodeURIComponent(String(orderId))}`, {
       method: "PUT",
-      headers: { Authorization: wcAuth(), "Content-Type": "application/json" },
+      headers: { Authorization: wcAuth(), "Content-Type": "application/json", "User-Agent": OUTBOUND_USER_AGENT },
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -68,7 +70,7 @@ export async function addOrderNote(
   try {
     const res = await fetch(`${WC_API_URL}/orders/${encodeURIComponent(String(orderId))}/notes`, {
       method: "POST",
-      headers: { Authorization: wcAuth(), "Content-Type": "application/json" },
+      headers: { Authorization: wcAuth(), "Content-Type": "application/json", "User-Agent": OUTBOUND_USER_AGENT },
       body: JSON.stringify({ note, customer_note: customerNote }),
     });
     return res.ok;
