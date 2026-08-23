@@ -80,14 +80,14 @@ export default function PremiumHeader() {
         setMobileMenuOpen(false);
       }
     };
-    
+
     if (mobileMenuOpen) {
       document.addEventListener("keydown", handleEscape);
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
-    
+
     return () => {
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = "";
@@ -105,7 +105,7 @@ export default function PremiumHeader() {
     };
 
     window.addEventListener("popstate", handlePopState);
-    
+
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
@@ -123,7 +123,7 @@ export default function PremiumHeader() {
     <>
       {/* Top Announcement Bar */}
       <div className="bg-black px-4 py-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-white sm:text-[11px] sm:tracking-[0.2em]">
-        Buy 1 get 15% off and Buy 2 get 20% off + 5% prepaid off
+        Buy 1 get 15% off and Buy 2 get 20% off
       </div>
 
       {/* Main Header */}
@@ -298,7 +298,7 @@ export default function PremiumHeader() {
             onClick={closeMobileMenu}
             aria-hidden="true"
           />
-          
+
           <div
             className="fixed top-0 left-0 bottom-0 w-[80%] max-w-[320px] bg-[#faf8f5] z-50 lg:hidden shadow-2xl"
             role="dialog"
@@ -309,8 +309,8 @@ export default function PremiumHeader() {
               <div className="flex items-center justify-between p-4 border-b border-gray-200">
                 <Link href="/" onClick={closeMobileMenu}>
                   <Image
-                    src={MOBILE_LOGO} 
-                    alt="Veloria Vault" 
+                    src={MOBILE_LOGO}
+                    alt="Veloria Vault"
                     width={130}
                     height={40}
                     unoptimized
@@ -339,7 +339,7 @@ export default function PremiumHeader() {
                             <span>{item.label}</span>
                             <ChevronDown size={16} className={`transition-transform duration-200 ${hoveredNav === item.label ? "rotate-180" : ""}`} />
                           </button>
-                          
+
                           <AnimatePresence>
                             {hoveredNav === item.label && (
                               <motion.div
@@ -382,7 +382,7 @@ export default function PremiumHeader() {
                     </li>
                   ))}
                 </ul>
-                
+
                 <div className="mt-8 px-4">
                   <p className="text-xs text-gray-400 uppercase tracking-wider mb-3">Account</p>
                   <ul className="space-y-1">
