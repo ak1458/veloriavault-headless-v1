@@ -45,21 +45,19 @@ export const AVAILABLE_COUPONS: Coupon[] = [
   //   usageCount: 0,
   // },
   //
-  // ─────────────────────────────────────────────
-  // CURRENT ACTIVE COUPONS
-  // ─────────────────────────────────────────────
-  {
-    id: "influencer-ff10",
-    code: "F&F", 
-    type: "percentage",
-    category: "influencer",
-    stackable: true, 
-    amount: 10,
-    description: "Friends & Family - 10% Off",
-    isActive: true,
-    isAutomatic: false,
-    usageCount: 0,
-  },
+  // [PAUSED] All coupons are currently paused. Uncomment to activate:
+  // {
+  //   id: "influencer-ff10",
+  //   code: "F&F", 
+  //   type: "percentage",
+  //   category: "influencer",
+  //   stackable: true, 
+  //   amount: 10,
+  //   description: "Friends & Family - 10% Off",
+  //   isActive: true,
+  //   isAutomatic: false,
+  //   usageCount: 0,
+  // },
 
   // Example for Diwali:
   // {

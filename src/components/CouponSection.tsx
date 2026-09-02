@@ -1,11 +1,12 @@
-"use client";
-
-import { useState } from "react";
-import { Tag, X, Loader2, Check, Sparkles } from "lucide-react";
-import { useCouponStore } from "@/store/cart-coupon";
-import { useCartStore } from "@/store/cart";
+// [PAUSED] Coupon Section is currently disabled.
+// To re-enable the coupon input and tier promo box, restore the commented component below:
 
 export default function CouponSection() {
+  return null;
+}
+
+/*
+export function ActiveCouponSection() {
   const [couponInput, setCouponInput] = useState("");
   
   const { 
@@ -35,7 +36,7 @@ export default function CouponSection() {
     <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
       <h3 className="font-serif text-lg text-gray-800 mb-4">Discounts & Offers</h3>
       
-      {/* Available Offers Banner */}
+      {/ * Available Offers Banner * /}
       <div className="mb-4 p-4 bg-gradient-to-r from-[#b59a5c]/10 to-[#b59a5c]/5 border border-[#b59a5c]/20 rounded-lg space-y-2">
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="w-4 h-4 text-[#b59a5c]" />
@@ -55,7 +56,7 @@ export default function CouponSection() {
 
       <p className="text-xs text-gray-500 mb-4">You can apply extra influencer or seasonal codes below.</p>
 
-      {/* Coupon Input */}
+      {/ * Coupon Input * /}
       <div className="flex gap-2 mb-4">
         <div className="relative flex-1">
           <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -78,12 +79,12 @@ export default function CouponSection() {
         </button>
       </div>
 
-      {/* Error Message */}
+      {/ * Error Message * /}
       {error && (
         <p className="text-xs text-red-500 mb-3">{error}</p>
       )}
 
-      {/* Applied Coupons */}
+      {/ * Applied Coupons * /}
       {appliedCouponCodes.length > 0 && (
         <div className="space-y-2 mb-4">
           {appliedCouponCodes.map((code) => {
@@ -122,3 +123,4 @@ export default function CouponSection() {
     </div>
   );
 }
+*/

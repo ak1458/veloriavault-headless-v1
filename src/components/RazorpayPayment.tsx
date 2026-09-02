@@ -5,8 +5,10 @@ import { Loader2 } from "lucide-react";
 
 interface RazorpayPaymentProps {
   amount: number;
-  orderId: string;
-  orderNumber: string;
+  orderId?: string;
+  orderNumber?: string;
+  razorpayOrderId?: string;
+  razorpayKey?: string;
   customerDetails: {
     name: string;
     email: string;
@@ -14,6 +16,7 @@ interface RazorpayPaymentProps {
   };
   onSuccess: (paymentData: { paymentId: string; razorpayOrderId: string; razorpaySignature: string }) => void;
   onError: (error: string) => void;
+  onDismiss?: () => void;
 }
 
 interface RazorpayResponse {
@@ -59,9 +62,12 @@ export default function RazorpayPayment({
   amount,
   orderId,
   orderNumber,
+  razorpayOrderId,
+  razorpayKey,
   customerDetails,
   onSuccess,
   onError,
+  onDismiss,
 }: RazorpayPaymentProps) {
   const [isLoading, setIsLoading] = useState(false);
   const hasOpened = useRef(false);
@@ -98,31 +104,39 @@ export default function RazorpayPayment({
       // Load Razorpay SDK
       await loadRazorpayScript();
 
-      // Create order via secure API (key is server-side)
-      const response = await fetch("/api/razorpay/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount,
-          orderId,
-          orderNumber,
-          customerDetails,
-        }),
-      });
+      let rzpOrderId = razorpayOrderId;
+      let rzpKey = razorpayKey;
 
-      const orderData = await response.json();
+      // If razorpayOrderId is not provided, create via API (backwards compatibility fallback)
+      if (!rzpOrderId || !rzpKey) {
+        const response = await fetch("/api/razorpay/create-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount,
+            orderId: orderId || "",
+            orderNumber: orderNumber || "",
+            customerDetails,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error(orderData.error || "Failed to create payment order");
+        const orderData = await response.json();
+
+        if (!response.ok) {
+          throw new Error(orderData.error || "Failed to create payment order");
+        }
+
+        rzpOrderId = orderData.orderId;
+        rzpKey = orderData.key;
       }
 
       const options: RazorpayOptions = {
-        key: orderData.key, // Public key from server
-        amount: orderData.amount,
-        currency: orderData.currency,
+        key: rzpKey!,
+        amount: Math.round(amount * 100),
+        currency: "INR",
         name: "Veloria Vault",
-        description: `Order #${orderNumber}`,
-        order_id: orderData.orderId,
+        description: `Order #${orderNumber || "Checkout"}`,
+        order_id: rzpOrderId!,
         prefill: {
           name: customerDetails.name,
           email: customerDetails.email,
@@ -135,35 +149,15 @@ export default function RazorpayPayment({
           ondismiss: () => {
             setIsLoading(false);
             hasOpened.current = false; // Allow retry if dismissed
+            onDismiss?.();
           },
         },
         handler: async (response: RazorpayResponse) => {
-          try {
-            // Verify payment
-            const verifyResponse = await fetch("/api/razorpay/verify", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            });
-
-            const verifyData = await verifyResponse.json();
-
-            if (verifyData.success) {
-              onSuccess({
-                paymentId: response.razorpay_payment_id,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpaySignature: response.razorpay_signature,
-              });
-            } else {
-              onError("Payment verification failed");
-            }
-          } catch {
-            onError("Error verifying payment");
-          }
+          onSuccess({
+            paymentId: response.razorpay_payment_id,
+            razorpayOrderId: response.razorpay_order_id,
+            razorpaySignature: response.razorpay_signature,
+          });
         },
       };
 

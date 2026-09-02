@@ -33,9 +33,11 @@ const steps = [
 ];
 
 interface PendingOrder {
-  orderId: number;
+  orderId?: number;
   orderNumber: string;
   total: number;
+  razorpayOrderId?: string;
+  razorpayKey?: string;
 }
 
 export default function CheckoutPage() {
@@ -141,20 +143,23 @@ export default function CheckoutPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to place order");
+        throw new Error(result.error || "Failed to process checkout");
       }
 
-      // For prepaid orders, show Razorpay payment instead of redirecting
+      // For prepaid orders, show Razorpay payment (NO order created in WooCommerce yet!)
       if (result.paymentRequired) {
+        formDataRef.current = data;
         setPendingOrder({
-          orderId: result.orderId,
-          orderNumber: result.orderNumber,
-          total: result.total,
+          orderNumber: result.orderNumber || "Checkout",
+          total: result.amount,
+          razorpayOrderId: result.razorpayOrderId,
+          razorpayKey: result.key,
         });
         setIsSubmitting(false);
         return;
       }
 
+      // COD order created successfully
       setPlacedOrder({
         orderId: result.orderId,
         orderNumber: result.orderNumber,
@@ -169,30 +174,64 @@ export default function CheckoutPage() {
   };
 
   const handlePaymentSuccess = async (paymentData: { paymentId: string; razorpayOrderId: string; razorpaySignature: string }) => {
-    // Update order with payment info + signature for server-side verification
+    // Payment verified on Razorpay -> Now create genuine, paid order in WooCommerce!
     try {
-      await fetch("/api/checkout/update-payment", {
+      setIsSubmitting(true);
+      const latestCalculation = await calculateDiscounts(items);
+      const currentData = formDataRef.current;
+
+      if (!currentData) {
+        throw new Error("Order information missing. Please re-enter details.");
+      }
+
+      const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderId: pendingOrder?.orderId,
-          paymentId: paymentData.paymentId,
-          razorpayOrderId: paymentData.razorpayOrderId,
-          razorpaySignature: paymentData.razorpaySignature,
-          status: "completed",
+          ...currentData,
+          items: items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          paymentMethod: "card",
+          shippingMethod: "standard",
+          isPrepaid: true,
+          couponCodes: [],
+          totals: {
+            subtotal: latestCalculation?.originalSubtotal || 0,
+            shipping: latestCalculation?.shippingCost || 0,
+            codFee: 0,
+            total: latestCalculation?.finalTotal || 0,
+          },
+          paymentDetails: {
+            paymentId: paymentData.paymentId,
+            razorpayOrderId: paymentData.razorpayOrderId,
+            razorpaySignature: paymentData.razorpaySignature,
+          },
         }),
       });
-    } catch (e) {
-      console.error("Failed to update payment status:", e);
-    }
 
-    setPlacedOrder({
-      orderId: pendingOrder!.orderId,
-      orderNumber: pendingOrder!.orderNumber,
-    });
-    setPendingOrder(null);
-    clearCart();
-    clearCoupons();
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to record confirmed order");
+      }
+
+      setPlacedOrder({
+        orderId: result.orderId,
+        orderNumber: result.orderNumber,
+      });
+      setPendingOrder(null);
+      clearCart();
+      clearCoupons();
+    } catch (e) {
+      console.error("Failed to complete order after payment:", e);
+      setOrderError(e instanceof Error ? e.message : "Payment succeeded but order creation failed. Please contact support.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handlePaymentError = (error: string) => {
@@ -211,7 +250,7 @@ export default function CheckoutPage() {
             </Link>
           </div>
         </div>
-        <SpinWheel />
+        {/* [PAUSED] <SpinWheel /> */}
       </>
     );
   }
@@ -231,8 +270,8 @@ export default function CheckoutPage() {
               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
               </div>
-              <h2 className="font-serif text-2xl text-gray-900 mb-2">Processing Payment...</h2>
-              <p className="text-sm text-gray-500">Please do not close this window</p>
+              <h2 className="font-serif text-2xl text-gray-900 mb-2">Complete Your Payment</h2>
+              <p className="text-sm text-gray-500">Secure gateway powered by Razorpay</p>
             </div>
 
             <div className="bg-gray-50 p-6 rounded-xl mb-8">
@@ -241,8 +280,8 @@ export default function CheckoutPage() {
                 <span className="text-2xl font-bold text-gray-900">₹{Number(pendingOrder.total).toLocaleString("en-IN")}</span>
               </div>
               <div className="border-t border-gray-200 my-3"></div>
-              <p className="text-sm text-gray-500 text-center">
-                Your secure payment gateway is opening...
+              <p className="text-xs text-green-700 text-center font-medium">
+                ✓ Includes 5% extra discount for prepaid payment
               </p>
             </div>
 
@@ -254,8 +293,9 @@ export default function CheckoutPage() {
 
             <RazorpayPayment
               amount={Number(pendingOrder.total)}
-              orderId={pendingOrder.orderId.toString()}
               orderNumber={pendingOrder.orderNumber}
+              razorpayOrderId={pendingOrder.razorpayOrderId}
+              razorpayKey={pendingOrder.razorpayKey}
               customerDetails={{
                 name: `${formDataRef.current?.firstName || ''} ${formDataRef.current?.lastName || ''}`.trim(),
                 email: formDataRef.current?.email || '',
@@ -263,10 +303,17 @@ export default function CheckoutPage() {
               }}
               onSuccess={handlePaymentSuccess}
               onError={handlePaymentError}
+              onDismiss={() => {
+                setPendingOrder(null);
+                setOrderError("Payment was cancelled. You can change details or choose Cash on Delivery.");
+              }}
             />
 
             <button
-              onClick={() => setPendingOrder(null)}
+              onClick={() => {
+                setPendingOrder(null);
+                setOrderError(null);
+              }}
               className="w-full mt-4 text-sm text-gray-500 hover:text-gray-800 transition-colors"
             >
               Cancel and go back
@@ -274,7 +321,7 @@ export default function CheckoutPage() {
           </motion.div>
           </div>
         </div>
-        <SpinWheel />
+        {/* [PAUSED] <SpinWheel /> */}
       </>
     );
   }
@@ -536,7 +583,7 @@ export default function CheckoutPage() {
 
                   {/* Order Summary for Mobile */}
                   <div className="lg:hidden mt-6">
-                    <CouponSection />
+                    {/* [PAUSED] <CouponSection /> */}
                     <OrderSummary showCouponSection={false} />
                   </div>
                 </div>
@@ -587,12 +634,12 @@ export default function CheckoutPage() {
             {/* Summary Side */}
           <div className="lg:col-span-5 space-y-4 hidden lg:block">
             <OrderSummary />
-            <CouponSection />
+            {/* [PAUSED] <CouponSection /> */}
           </div>
 
         </div>
       </div>
-      <SpinWheel />
+      {/* [PAUSED] <SpinWheel /> - Uncomment when running gamified spin promotions */}
     </div>
   );
 }

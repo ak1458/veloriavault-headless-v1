@@ -128,7 +128,8 @@ function resolveValidCoupons(
 }
 
 export function calculateDiscounts(input: CalculationInput): DiscountCalculation {
-  const { items, appliedCouponCodes, isPrepaid, luckyDrawDiscount } = input;
+  const { items, isPrepaid } = input;
+  // const { appliedCouponCodes, luckyDrawDiscount } = input; // [PAUSED] Uncomment when re-enabling manual coupons
 
   const originalSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -141,55 +142,28 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
     };
   }
 
-  // 1. Automatic Tier Discount (1 item = 15%, 2+ items = 20%)
-  const tierPercent = itemCount >= 2 ? 20 : 15;
-  const rawTierDiscount = Math.round((originalSubtotal * tierPercent) / 100);
+  /* =========================================================================
+   * [PAUSED OFFERS - TO RE-ENABLE IN FUTURE, UNCOMMENT THIS BLOCK]
+   * 1. Automatic Tier Discount (1 item = 15%, 2+ items = 20%)
+   * const tierPercent = itemCount >= 2 ? 20 : 15;
+   * const rawTierDiscount = Math.round((originalSubtotal * tierPercent) / 100);
+   *
+   * 3. Manual Coupons & Lucky Draw
+   * const appliedCoupons = resolveValidCoupons(
+   *   appliedCouponCodes,
+   *   originalSubtotal,
+   *   itemCount,
+   *   luckyDrawDiscount,
+   * );
+   * const rawManualDiscount = appliedCoupons.reduce((sum, item) => sum + item.rawAmount, 0);
+   * ========================================================================= */
 
-  // 2. Prepaid Discount
-  const rawPrepaidDiscount = isPrepaid
+  // 1. Prepaid Discount (5% Off on Prepaid / Online Orders)
+  const finalPrepaidDiscount = isPrepaid
     ? Math.round((originalSubtotal * PREPAID_BONUS_PERCENT) / 100)
     : 0;
 
-  // 3. Manual Coupons
-  const appliedCoupons = resolveValidCoupons(
-    appliedCouponCodes,
-    originalSubtotal,
-    itemCount,
-    luckyDrawDiscount,
-  );
-  const rawManualDiscount = appliedCoupons.reduce((sum, item) => sum + item.rawAmount, 0);
-
-  // --- THE ALGORITHM: PROPORTIONAL 35% CAP ---
-  const totalRawDiscount = rawTierDiscount + rawPrepaidDiscount + rawManualDiscount;
-  const maxAllowedDiscount = Math.round((originalSubtotal * MAX_DISCOUNT_PERCENT) / 100);
-
-  let finalTierDiscount = rawTierDiscount;
-  let finalPrepaidDiscount = rawPrepaidDiscount;
-  let isCapped = false;
-
-  if (totalRawDiscount > maxAllowedDiscount && totalRawDiscount > 0) {
-    isCapped = true;
-    const scaleFactor = maxAllowedDiscount / totalRawDiscount;
-
-    finalTierDiscount = Math.floor(rawTierDiscount * scaleFactor);
-    finalPrepaidDiscount = Math.floor(rawPrepaidDiscount * scaleFactor);
-
-    let actualManualTotal = 0;
-    appliedCoupons.forEach((c) => {
-      c.discountAmount = Math.floor(c.rawAmount * scaleFactor);
-      actualManualTotal += c.discountAmount;
-    });
-
-    // Fix rounding remainder - dump it into tier discount usually, to perfectly match maxAllowed
-    const currentTotal = finalTierDiscount + finalPrepaidDiscount + actualManualTotal;
-    if (currentTotal < maxAllowedDiscount) {
-      finalTierDiscount += (maxAllowedDiscount - currentTotal);
-    }
-  }
-
-  const finalManualDiscountAmount = appliedCoupons.reduce((sum, item) => sum + item.discountAmount, 0);
-  const totalDiscountsApplied = finalTierDiscount + finalPrepaidDiscount + finalManualDiscountAmount;
-
+  const totalDiscountsApplied = finalPrepaidDiscount;
   const subtotalAfterDiscounts = Math.max(0, originalSubtotal - totalDiscountsApplied);
   
   const shippingCost = originalSubtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_COST;
@@ -199,12 +173,14 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
   // Formatting Savings Breakdown
   const savingsBreakdown: { label: string; amount: number }[] = [];
   
+  /* [PAUSED] Uncomment to show tier savings line:
   if (finalTierDiscount > 0) {
     savingsBreakdown.push({
       label: itemCount >= 2 ? "Automatic Tier Discount (20%)" : "Automatic Tier Discount (15%)",
       amount: finalTierDiscount,
     });
   }
+  */
   
   if (finalPrepaidDiscount > 0) {
     savingsBreakdown.push({
@@ -213,25 +189,27 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
     });
   }
   
+  /* [PAUSED] Uncomment to show applied coupon savings:
   appliedCoupons.forEach(({ coupon, discountAmount }) => {
     savingsBreakdown.push({ 
       label: coupon.code === "LUCKYDRAW" ? "Lucky Draw Discount" : `Coupon: ${coupon.code}`, 
       amount: discountAmount 
     });
   });
+  */
 
   return {
     originalSubtotal,
     itemCount,
     isPrepaid,
-    tierDiscount: finalTierDiscount,
+    tierDiscount: 0,
     prepaidDiscount: finalPrepaidDiscount,
-    manualCouponDiscount: finalManualDiscountAmount,
-    appliedCoupons,
+    manualCouponDiscount: 0,
+    appliedCoupons: [],
     codFee,
     shippingCost,
     finalTotal,
-    isCapped,
+    isCapped: false,
     savingsBreakdown,
   };
 }
@@ -243,6 +221,8 @@ export function validateCoupon(
   luckyDrawDiscount?: number,
   existingCoupons: string[] = [],
 ): { valid: boolean; coupon?: Coupon; error?: string } {
+  // [PAUSED] Coupons are currently disabled. To re-enable, uncomment the code below:
+  /*
   const coupon = getCouponByCode(code, luckyDrawDiscount);
 
   if (!coupon) {
@@ -262,7 +242,6 @@ export function validateCoupon(
     if (!coupon.stackable) {
       return { valid: false, error: "This coupon cannot be combined with other offers." };
     }
-    // Also check if existing coupons are non-stackable
     const hasNonStackable = existingCoupons
       .map(c => getCouponByCode(c, luckyDrawDiscount))
       .some(c => c && !c.stackable);
@@ -271,7 +250,6 @@ export function validateCoupon(
       return { valid: false, error: "You already have a non-combinable offer applied to your cart." };
     }
     
-    // Prevent same category stacking (e.g. two influencer codes)
     const existingCategories = existingCoupons
       .map(c => getCouponByCode(c, luckyDrawDiscount)?.category)
       .filter(Boolean);
@@ -282,4 +260,6 @@ export function validateCoupon(
   }
 
   return { valid: true, coupon };
+  */
+  return { valid: false, error: "Coupons are temporarily disabled." };
 }

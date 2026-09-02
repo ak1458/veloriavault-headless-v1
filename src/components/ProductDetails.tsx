@@ -875,7 +875,7 @@ export default function ProductDetails({
         />
       )}
 
-      <ScratchCoupon />
+      {/* [PAUSED] <ScratchCoupon /> - Uncomment when running gamified scratch promotions */}
 
       {isZoomOpen && currentImage && (
         <div className="fixed inset-0 z-[70] bg-[rgba(18,15,11,0.94)] px-4 py-6 sm:px-6 lg:px-10">

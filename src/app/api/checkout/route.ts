@@ -14,12 +14,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import crypto from "crypto";
 import { calculateDiscounts } from "@/lib/coupon-calculator";
 import { buildOrderFeeLines } from "@/lib/order-fees";
 import { getProductsByIds, getProductById } from "@/lib/woocommerce";
 import { verifyToken } from "@/lib/auth/jwt";
 import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 import { createShiprocketOrder } from "@/lib/shiprocket";
+import { syncPaidOrderToShiprocket } from "@/lib/order-fulfillment";
 import jwt from "jsonwebtoken";
 
 // Basic HTML sanitizer for security
@@ -37,7 +39,7 @@ const checkoutSchema = z.object({
   postalCode: z.string().min(4, "Valid postal code is required").transform(stripHtmlTags),
   phone: z.string().min(10, "Valid phone number is required").transform(stripHtmlTags),
   paymentMethod: z.enum(["card", "cod"]),
-  shippingMethod: z.enum(["standard", "express"]),
+  shippingMethod: z.enum(["standard", "express"]).default("standard"),
   isPrepaid: z.boolean().default(true),
   items: z.array(
     z.object({
@@ -59,6 +61,11 @@ const checkoutSchema = z.object({
     codFee: z.number(),
     total: z.number(),
   }),
+  paymentDetails: z.object({
+    paymentId: z.string().min(1),
+    razorpayOrderId: z.string().min(1),
+    razorpaySignature: z.string().min(1),
+  }).optional(),
 });
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
@@ -228,7 +235,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate discounts server-side
+    // Calculate discounts server-side (only 5% prepaid bonus active)
     const calculation = calculateDiscounts({
       items: secureItems,
       appliedCouponCodes: validatedData.couponCodes,
@@ -236,16 +243,115 @@ export async function POST(request: NextRequest) {
       luckyDrawDiscount,
     });
 
+    const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID?.trim() || "";
+    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET?.trim() || "";
+
     // ========================================
-    // CREATE WOOCOMMERCE ORDER
+    // CASE 1: PREPAID INITIATION (NO WOOCOMMERCE ORDER YET)
+    // Avoid creating any WooCommerce order until the customer genuinely pays.
+    // If they cancel or close Razorpay, WooCommerce remains 100% clean!
+    // ========================================
+    if (validatedData.paymentMethod === "card" && !validatedData.paymentDetails) {
+      if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+        console.error("[Checkout] Missing Razorpay credentials");
+        return NextResponse.json(
+          { error: "Payment gateway not configured" },
+          { status: 500 }
+        );
+      }
+
+      const rzpAuth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
+      const safeReceipt = `vv_${Date.now().toString().slice(-8)}`;
+
+      const rzpResponse = await fetch("https://api.razorpay.com/v1/orders", {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${rzpAuth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: Math.round(calculation.finalTotal * 100),
+          currency: "INR",
+          receipt: safeReceipt,
+          notes: {
+            customer_email: validatedData.email.substring(0, 250),
+            customer_phone: validatedData.phone.substring(0, 250),
+            customer_name: `${validatedData.firstName} ${validatedData.lastName}`.substring(0, 250),
+          },
+        }),
+      });
+
+      if (!rzpResponse.ok) {
+        const errorData = await rzpResponse.json().catch(() => ({}));
+        console.error("[Checkout] Razorpay order initiation failed:", errorData);
+        return NextResponse.json(
+          { error: "Failed to initialize payment gateway" },
+          { status: 500 }
+        );
+      }
+
+      const rzpOrder = await rzpResponse.json();
+
+      return NextResponse.json({
+        success: true,
+        paymentRequired: true,
+        razorpayOrderId: rzpOrder.id,
+        amount: calculation.finalTotal,
+        key: RAZORPAY_KEY_ID,
+        currency: "INR",
+        orderNumber: safeReceipt,
+        calculation: {
+          subtotal: calculation.originalSubtotal,
+          tierDiscount: calculation.tierDiscount,
+          prepaidDiscount: calculation.prepaidDiscount,
+          manualCouponDiscount: calculation.manualCouponDiscount,
+          shipping: calculation.shippingCost,
+          codFee: calculation.codFee,
+          finalTotal: calculation.finalTotal,
+          savingsBreakdown: calculation.savingsBreakdown,
+        },
+      });
+    }
+
+    // ========================================
+    // CASE 2: PREPAID PAYMENT VERIFICATION
+    // If prepaid, verify the cryptographic signature before creating the order
+    // ========================================
+    const isPaidCard = validatedData.paymentMethod === "card" && Boolean(validatedData.paymentDetails);
+    if (isPaidCard) {
+      if (!RAZORPAY_KEY_SECRET) {
+        return NextResponse.json(
+          { error: "Payment verification configuration error" },
+          { status: 500 }
+        );
+      }
+
+      const { paymentId, razorpayOrderId, razorpaySignature } = validatedData.paymentDetails!;
+      const expectedSignature = crypto
+        .createHmac("sha256", RAZORPAY_KEY_SECRET)
+        .update(`${razorpayOrderId}|${paymentId}`)
+        .digest("hex");
+
+      if (expectedSignature !== razorpaySignature) {
+        console.error(`[Checkout] Signature mismatch: expected ${expectedSignature}, got ${razorpaySignature}`);
+        return NextResponse.json(
+          { error: "Payment verification failed" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ========================================
+    // CREATE GENUINE WOOCOMMERCE ORDER (Paid Prepaid OR COD)
     // ========================================
     const orderData = {
-      payment_method: validatedData.paymentMethod === "cod" ? "cod" : "razorpay",
-      payment_method_title: validatedData.paymentMethod === "cod" 
-        ? "Cash on Delivery" 
-        : "UPI / Card / Net Banking",
-      set_paid: false,
-      status: "pending",
+      payment_method: isPaidCard ? "razorpay" : "cod",
+      payment_method_title: isPaidCard 
+        ? "UPI / Card / Net Banking (Razorpay)" 
+        : "Cash on Delivery",
+      set_paid: isPaidCard,
+      status: "processing", // Real confirmed orders start as processing
+      ...(isPaidCard ? { transaction_id: validatedData.paymentDetails!.paymentId } : {}),
       currency: "INR",
       billing: {
         first_name: validatedData.firstName,
@@ -279,18 +385,13 @@ export async function POST(request: NextRequest) {
       }),
       shipping_lines: [
         {
-          method_id: validatedData.shippingMethod,
-          method_title: validatedData.shippingMethod === "standard" 
+          method_id: validatedData.shippingMethod || "standard",
+          method_title: (validatedData.shippingMethod || "standard") === "standard" 
             ? "Standard Shipping" 
             : "Express Shipping",
           total: calculation.shippingCost.toString(),
         },
       ],
-      // All site discounts (tier/prepaid/coupons/lucky-draw) are written as
-      // itemized NEGATIVE fee lines + the positive COD fee, so the WooCommerce
-      // order total equals the real amount charged (== _headless_charge_amount).
-      // Config coupons are NOT WC coupons, so coupon_lines are intentionally
-      // omitted — their value is already inside the negative fee lines.
       fee_lines: buildOrderFeeLines(calculation),
       meta_data: [
         { key: "_order_source", value: "Next.js Headless" },
@@ -300,16 +401,18 @@ export async function POST(request: NextRequest) {
         { key: "_manual_coupon_discount", value: calculation.manualCouponDiscount.toString() },
         { key: "_original_subtotal", value: calculation.originalSubtotal.toString() },
         { key: "_total_savings", value: calculation.savingsBreakdown.reduce((sum, s) => sum + s.amount, 0).toString() },
-        // Server-authoritative charge amount (incl. all custom discounts the WC
-        // order total does NOT reflect). Read back by create-order/update-payment
-        // so the Razorpay amount can never be set by the client. See SECURITY.
         { key: "_headless_charge_amount", value: calculation.finalTotal.toString() },
-        { key: "_customer_ip", value: clientIP }, // For fraud detection
+        ...(isPaidCard ? [
+          { key: "_razorpay_order_id", value: validatedData.paymentDetails!.razorpayOrderId },
+          { key: "_razorpay_payment_id", value: validatedData.paymentDetails!.paymentId },
+          { key: "_payment_status", value: "completed" },
+        ] : []),
+        { key: "_customer_ip", value: clientIP },
       ],
       customer_id: customerId,
     };
 
-    // Create order. Fee lines never fail coupon validation, so no retry needed.
+    // Create order in WooCommerce
     const response = await fetch(`${WC_API_URL}/orders`, {
       method: "POST",
       headers: {
@@ -329,29 +432,13 @@ export async function POST(request: NextRequest) {
     }
 
     const order = await response.json();
-    const wpBaseUrl = WC_API_URL.replace(/\/wp-json\/wc\/v3\/?$/, "");
-    const paymentUrl =
-      validatedData.paymentMethod === "cod"
-        ? null
-        : order.payment_url ||
-          order.checkout_payment_url ||
-          (order.order_key
-            ? `${wpBaseUrl}/checkout/order-pay/${order.id}/?pay_for_order=true&key=${encodeURIComponent(order.order_key)}`
-            : null);
-
-    if (validatedData.paymentMethod !== "cod" && !paymentUrl) {
-      return NextResponse.json(
-        { error: "Payment link could not be generated" },
-        { status: 500 },
-      );
-    }
 
     // ========================================
-    // SHIPROCKET SYNC (COD orders sync immediately)
-    // Prepaid orders sync after payment in update-payment route
+    // SHIPROCKET SYNC
     // ========================================
-    if (validatedData.paymentMethod === "cod") {
-      // Fire-and-forget — don't block checkout response
+    if (isPaidCard) {
+      syncPaidOrderToShiprocket(order);
+    } else if (validatedData.paymentMethod === "cod") {
       createShiprocketOrder({
         orderId: order.id,
         orderDate: new Date().toISOString().split("T")[0] + " " + new Date().toTimeString().split(" ")[0],
@@ -376,17 +463,16 @@ export async function POST(request: NextRequest) {
         shippingCharges: calculation.shippingCost,
         discount: calculation.prepaidDiscount + calculation.manualCouponDiscount,
         total: calculation.finalTotal,
-      }).catch((err) => console.error("[Checkout] Shiprocket sync failed (non-blocking):", err));
+      }).catch((err) => console.error("[Checkout] Shiprocket COD sync failed (non-blocking):", err));
     }
 
     return NextResponse.json({
       success: true,
       orderId: order.id,
       orderNumber: order.number,
-      total: calculation.finalTotal, // Fix: Use headless calculated total, not WC total which lacks custom discounts
+      total: calculation.finalTotal,
       status: order.status,
-      paymentRequired: validatedData.paymentMethod !== "cod",
-      paymentUrl,
+      paymentRequired: false,
       calculation: {
         subtotal: calculation.originalSubtotal,
         tierDiscount: calculation.tierDiscount,

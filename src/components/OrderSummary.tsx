@@ -20,7 +20,7 @@ export default function OrderSummary({ showCouponSection = true }: OrderSummaryP
   } = useCouponStore();
 
   useEffect(() => {
-    void calculateDiscounts(items);
+    calculateDiscounts(items).catch(() => {});
   }, [items, isPrepaid, calculateDiscounts]);
 
   if (items.length === 0) {

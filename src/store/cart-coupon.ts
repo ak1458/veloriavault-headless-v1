@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CartItem } from "./cart";
 import { DiscountCalculation } from "@/types/coupon";
+import { calculateDiscounts as localCalculateDiscounts } from "@/lib/coupon-calculator";
 
 let activeCalculationRequestId = 0;
 let activeCalculationController: AbortController | null = null;
@@ -101,16 +102,36 @@ export const useCouponStore = create<CouponState>()(
       },
 
       calculateDiscounts: async (items: CartItem[]) => {
+        if (items.length === 0) {
+          set({ calculation: null, appliedCouponCodes: [], isLoading: false, error: null });
+          return null;
+        }
+
+        const { isPrepaid } = get();
+
+        // Calculate discounts instantly using local calculator (5% prepaid discount only)
+        // Eliminates AbortError and avoids redundant network calls
+        const localCalculation = localCalculateDiscounts({
+          items,
+          appliedCouponCodes: [],
+          isPrepaid: isPrepaid ?? true,
+        });
+
+        set({
+          calculation: localCalculation,
+          appliedCouponCodes: [],
+          isLoading: false,
+          error: null,
+        });
+
+        return localCalculation;
+
+        /* [PAUSED FOR FUTURE COUPONS / TIER OFFERS]
         activeCalculationRequestId += 1;
         const requestId = activeCalculationRequestId;
 
         activeCalculationController?.abort();
         activeCalculationController = new AbortController();
-
-        if (items.length === 0) {
-          set({ calculation: null, appliedCouponCodes: [], isLoading: false, error: null });
-          return null;
-        }
 
         set({ isLoading: true, error: null });
 
@@ -167,6 +188,7 @@ export const useCouponStore = create<CouponState>()(
         }
 
         return null;
+        */
       },
 
       validateCoupon: async (code: string, items: CartItem[]) => {
