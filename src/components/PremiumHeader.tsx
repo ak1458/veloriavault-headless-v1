@@ -121,11 +121,11 @@ export default function PremiumHeader() {
 
   return (
     <>
-      {/* Top Announcement Bar */}
+      {/* [PAUSED] Top Announcement Bar
       <div className="bg-black px-4 py-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-white sm:text-[11px] sm:tracking-[0.2em]">
-        {/* [PAUSED] Buy 1 get 15% off and Buy 2 get 20% off */}
         Get 5% Extra Off on All Prepaid Orders
       </div>
+      */}
 
       {/* Main Header */}
       <header className="sticky top-0 z-50 bg-[#faf8f5] border-b border-gray-200">
