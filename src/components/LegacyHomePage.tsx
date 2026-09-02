@@ -353,7 +353,9 @@ export default async function LegacyHomePage() {
         </section>
       )}
 
+      {/* [PAUSED] Instagram Feed - Can be un-commented when fresh Instagram plugin is configured in WooCommerce
       <InstagramFeed initialPosts={instagramPosts} />
+      */}
 
       {/* Policies Section */}
       <section className="py-16 lg:py-20 border-t border-gray-100 bg-white">
