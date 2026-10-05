@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { rateLimit, getClientIP } from "@/lib/rate-limit";
+import { sendNewsletterSignupEmail } from "@/lib/mailer";
 
 const subscribeSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
 });
 
-// Store emails in memory for now (replace with database later)
+// Per-instance dedupe only: serverless memory is wiped on every cold start, so
+// the durable record is the notification email sent to the store inbox below.
+// TODO: move to a real list (Mailchimp / Klaviyo / WooCommerce) when chosen.
 const subscribers = new Set<string>();
+const NEWSLETTER_INBOX = process.env.NEWSLETTER_INBOX || process.env.SUPPORT_EMAIL || "care@veloriavault.com";
 
 /**
  * POST /api/newsletter
@@ -44,7 +48,18 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Add to subscribers
+    // Record durably first; if the email can't be sent, tell the customer so
+    // the signup isn't silently lost.
+    try {
+      await sendNewsletterSignupEmail(NEWSLETTER_INBOX, normalizedEmail);
+    } catch (e) {
+      console.error("[Newsletter] Failed to record signup:", e instanceof Error ? e.message : e);
+      return NextResponse.json(
+        { success: false, error: "We couldn't subscribe you right now. Please try again later." },
+        { status: 503 },
+      );
+    }
+
     subscribers.add(normalizedEmail);
     
     // TODO: Integrate with your email service (Mailchimp, ConvertKit, etc.)
@@ -85,7 +100,8 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   // Simple auth check - you should implement proper admin auth
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.NEWSLETTER_ADMIN_KEY}`) {
+  const adminKey = process.env.NEWSLETTER_ADMIN_KEY;
+  if (!adminKey || authHeader !== `Bearer ${adminKey}`) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }

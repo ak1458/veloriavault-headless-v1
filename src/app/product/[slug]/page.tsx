@@ -30,7 +30,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${product.name} | Veloria Vault`,
+    title: product.name,
     description: stripHtml(product.short_description || product.description),
     alternates: {
       canonical: `/product/${slug}`,

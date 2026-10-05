@@ -41,7 +41,12 @@ describe("otp", () => {
     expect(readOtpSession(challenge)).toBeNull();
   });
 
-  it("hashOtp is deterministic", () => {
-    expect(hashOtp("123456")).toBe(hashOtp("123456"));
+  it("hashOtp is keyed and bound to the email", () => {
+    expect(hashOtp("123456", "a@b.com")).toBe(hashOtp("123456", "A@B.com"));
+    expect(hashOtp("123456", "a@b.com")).not.toBe(hashOtp("123456", "c@d.com"));
+    // Not a plain sha256 of the code (offline brute-force resistant)
+    expect(hashOtp("123456", "a@b.com")).not.toBe(
+      "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+    );
   });
 });

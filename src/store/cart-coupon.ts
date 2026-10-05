@@ -4,7 +4,10 @@ import { CartItem } from "./cart";
 import { DiscountCalculation } from "@/types/coupon";
 import { calculateDiscounts as localCalculateDiscounts } from "@/lib/coupon-calculator";
 
+// Used by the paused server-side calculation below; kept for re-enabling coupons.
+// eslint-disable-next-line prefer-const, @typescript-eslint/no-unused-vars
 let activeCalculationRequestId = 0;
+// eslint-disable-next-line prefer-const, @typescript-eslint/no-unused-vars
 let activeCalculationController: AbortController | null = null;
 
 interface CouponState {
@@ -107,19 +110,20 @@ export const useCouponStore = create<CouponState>()(
           return null;
         }
 
-        const { isPrepaid } = get();
+        const { isPrepaid, appliedCouponCodes } = get();
 
-        // Calculate discounts instantly using local calculator (5% prepaid discount only)
-        // Eliminates AbortError and avoids redundant network calls
+        // Same calculator the server runs at checkout (tier + coupons + prepaid,
+        // 35% cap), so the shown total matches the charged total. Local = instant.
         const localCalculation = localCalculateDiscounts({
           items,
-          appliedCouponCodes: [],
+          appliedCouponCodes,
           isPrepaid: isPrepaid ?? true,
         });
 
         set({
           calculation: localCalculation,
-          appliedCouponCodes: [],
+          // Drop codes that no longer apply (expired, cart below minimum, ...)
+          appliedCouponCodes: getNormalizedAppliedCodes(localCalculation),
           isLoading: false,
           error: null,
         });

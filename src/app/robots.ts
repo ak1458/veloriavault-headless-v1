@@ -1,27 +1,16 @@
 import { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://veloriavault.com";
+  const baseUrl = SITE_URL;
+  const disallow = ["/api/", "/checkout", "/cart", "/account", "/my-account", "/wishlist", "/*.json$"];
 
   return {
     rules: [
       {
         userAgent: "*",
         allow: "/",
-        disallow: [
-          "/api/",
-          "/checkout",
-          "/cart",
-          "/account",
-          "/my-account",
-          "/wishlist",
-          "/*.json$",
-        ],
-      },
-      {
-        userAgent: "Googlebot",
-        allow: "/",
-        disallow: ["/api/"],
+        disallow,
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,

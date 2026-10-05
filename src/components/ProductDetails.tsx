@@ -194,13 +194,16 @@ export default function ProductDetails({
 
   const defaultVariationId = useMemo(() => {
     const leadImageSrc = product.images?.[0]?.src;
+    const leadMatch = leadImageSrc
+      ? variationOptions.find((option) => option.swatchImage === leadImageSrc)?.id
+      : undefined;
 
-    if (!leadImageSrc) {
-      return null;
-    }
-
+    // Always pre-select a colour: without one, "Add to cart" would add the
+    // parent variable product and the order would arrive with no colour.
     return (
-      variationOptions.find((option) => option.swatchImage === leadImageSrc)?.id ??
+      leadMatch ??
+      variationOptions.find((option) => option.product.stock_status !== "outofstock")?.id ??
+      variationOptions[0]?.id ??
       null
     );
   }, [product.images, variationOptions]);
@@ -242,6 +245,7 @@ export default function ProductDetails({
   const regularPrice = Number(displayProduct.regular_price || 0);
   const showRegularPrice =
     displayProduct.on_sale && regularPrice > 0 && regularPrice > price;
+  const needsVariation = variationOptions.length > 0 && !selectedVariation;
   const isInStock = displayProduct.stock_status !== "outofstock";
   const currentColor = getColorName(selectedVariation) || getColorName(product);
   const displayProductLink = getRelativeProductLink(
@@ -344,9 +348,8 @@ export default function ProductDetails({
 
   const handleVariationSelect = useCallback(
     (option: VariationOption) => {
-      setManualVariationId(
-        selectedVariationId === option.id ? "cleared" : option.id,
-      );
+      // Re-clicking the active swatch keeps it selected (a colour is required).
+      setManualVariationId(option.id);
       setSelectedImage(0);
       setThumbsIndex(0);
       if (mobileGalleryRef.current) {
@@ -809,10 +812,10 @@ export default function ProductDetails({
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={!isInStock}
+                disabled={!isInStock || needsVariation}
                 className="h-[52px] w-full bg-[#b89a57] px-8 text-[14px] font-medium uppercase tracking-[0.02em] text-white transition hover:bg-[#a98a48] disabled:cursor-not-allowed disabled:bg-[#d7c69f] sm:min-w-[190px] sm:w-auto"
               >
-                Add to cart
+                {needsVariation ? "Select a colour" : "Add to cart"}
               </button>
             </div>
 

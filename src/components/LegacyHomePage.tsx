@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import LegacyHomeTabs from "@/components/LegacyHomeTabs";
 import PremiumHero from "@/components/PremiumHero";
+import OfferStrip from "@/components/OfferStrip";
 import HomeProductCard from "@/components/HomeProductCard";
 import InstagramFeed from "@/components/InstagramFeed";
 import CustomerReviewsSection from "@/components/CustomerReviewsSection";
@@ -235,6 +236,7 @@ export default async function LegacyHomePage() {
   return (
     <main id="main-content" className="legacy-home-page" role="main">
       <PremiumHero />
+      <OfferStrip />
 
       {/* Features Section */}
       <section className="py-12 lg:py-16">

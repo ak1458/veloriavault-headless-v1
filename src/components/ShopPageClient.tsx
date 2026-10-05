@@ -150,7 +150,7 @@ export default function ShopPageClient({
                 >
                   <PremiumProductCard
                     product={product}
-                    imageLoading={index < 8 ? "eager" : "lazy"}
+                    imageLoading={index < 4 ? "eager" : "lazy"}
                     showWishlist={true}
                   />
                 </motion.div>

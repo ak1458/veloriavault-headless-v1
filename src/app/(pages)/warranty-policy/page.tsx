@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Warranty Policy | Veloria Vault",
+  title: "Warranty Policy",
   description: "Learn about our Lifetime Service Warranty and what it covers.",
 };
 

@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions | Veloria Vault",
+  title: "Terms & Conditions",
   description: "Read the terms and conditions governing the use of our website.",
 };
 

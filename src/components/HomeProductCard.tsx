@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useCartStore } from "@/store/cart";
 import { getRelativeProductLink, type WCProduct } from "@/lib/woocommerce";
@@ -27,9 +28,22 @@ export default function HomeProductCard({
   const categoryName = product.categories[0]?.name || "Luxury Bag";
   const swatches = getProductColorSwatches(product);
 
+  // Variable (colour) products need a colour chosen on the product page;
+
+  // adding the parent directly would create an order with no colour.
+
+  const needsOptions = product.type === "variable";
+
+  const router = useRouter();
+
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (needsOptions) {
+      router.push(productLink);
+      return;
+    }
     addItem({
       id: product.id,
       name: product.name,
@@ -114,7 +128,7 @@ export default function HomeProductCard({
           className="mt-auto w-full py-2.5 bg-black text-white text-xs font-bold tracking-wider uppercase rounded hover:bg-gray-800 transition-colors"
           style={{ fontFamily: 'var(--font-lato), sans-serif' }}
         >
-          ADD TO CART
+          {needsOptions ? "CHOOSE COLOUR" : "ADD TO CART"}
         </button>
       </div>
     </div>

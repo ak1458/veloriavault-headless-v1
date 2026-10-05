@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Contact Us | Veloria Vault",
+  title: "Contact Us",
   description: "Get in touch with Veloria Vault for any questions, support, or inquiries about our luxury leather handbags.",
   alternates: {
     canonical: "/contact-us",

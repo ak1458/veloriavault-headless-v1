@@ -856,14 +856,22 @@ export async function getProducts(options: {
   return products;
 }
 
-export async function getProductById(id: number): Promise<WCProduct | null> {
+export async function getProductById(
+  id: number,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<WCProduct | null> {
+  // `fresh` bypasses the 5-minute data cache: checkout must see live stock
+  // and price, not a snapshot (overselling the last unit / stale prices).
+  const fetchOptions: WCFetchOptions = fresh ? { revalidate: false } : {};
   try {
-    const product = await storeFetch<StoreProduct>(`/products/${id}`);
+    const product = await storeFetch<StoreProduct>(`/products/${id}`, {}, fetchOptions);
 
     if (!product || typeof product !== "object" || !("id" in product)) {
       // Fallback to Admin API
       const adminProduct = await adminFetch<AdminApiProduct | Record<string, never>>(
         `/products/${id}`,
+        {},
+        fetchOptions,
       );
       if (
         adminProduct &&
@@ -1065,7 +1073,10 @@ export async function getParentProducts(options: {
   return products;
 }
 
-export async function getProductsByIds(ids: number[]): Promise<WCProduct[]> {
+export async function getProductsByIds(
+  ids: number[],
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<WCProduct[]> {
   if (!ids.length) {
     return [];
   }
@@ -1075,7 +1086,7 @@ export async function getProductsByIds(ids: number[]): Promise<WCProduct[]> {
   // variable/parent products — only simple and variation types appear
   // in list results. Individual `/products/{id}` works for all types,
   // so we skip the batch include call entirely to save time on Vercel.
-  const settledProducts = await Promise.allSettled(ids.map((id) => getProductById(id)));
+  const settledProducts = await Promise.allSettled(ids.map((id) => getProductById(id, { fresh })));
 
   const results = ids
     .map((_, i) => {
@@ -1094,7 +1105,11 @@ export async function getProductsByIds(ids: number[]): Promise<WCProduct[]> {
   // Strategy 2: If individual Store API fetches all failed, try the Admin API
   try {
     const adminPromises = ids.map((id) =>
-      adminFetch<AdminApiProduct | Record<string, never>>(`/products/${id}`).catch(
+      adminFetch<AdminApiProduct | Record<string, never>>(
+        `/products/${id}`,
+        {},
+        fresh ? { revalidate: false } : {},
+      ).catch(
         () => null,
       ),
     );

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface ChatProductCard {
+  type?: string;
   id: number;
   name: string;
   slug: string;

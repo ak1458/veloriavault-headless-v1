@@ -4,7 +4,6 @@ export const PRODUCT_PAGE_PROMO = {
   subtitle:
     "Clear offers on the product page with the spacing and breathing room from your reference screenshots.",
   items: [
-    /* [PAUSED] Uncomment when re-enabling Buy 1 / Buy 2 Tier offers:
     {
       title: "Buy 1 - Enjoy 15% Off",
       description: "Automatically applied to one bag.",
@@ -13,7 +12,6 @@ export const PRODUCT_PAGE_PROMO = {
       title: "Buy 2 - Get 20% Off",
       description: "The best automatic bag offer in the current checkout flow.",
     },
-    */
     {
       title: "Extra 5% Off On Prepaid",
       description: "Works automatically with UPI, credit/debit cards, and net banking.",

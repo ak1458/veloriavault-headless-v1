@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Veloria Vault",
+  title: "Privacy Policy",
   description: "Learn how we collect, use, and safeguard your personal information.",
 };
 

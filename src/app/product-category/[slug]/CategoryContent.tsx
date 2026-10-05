@@ -128,7 +128,7 @@ export default function CategoryContent({
                 >
                   <PremiumProductCard
                     product={product}
-                    imageLoading={index < 8 ? "eager" : "lazy"}
+                    imageLoading={index < 4 ? "eager" : "lazy"}
                   />
                 </motion.div>
               ))}

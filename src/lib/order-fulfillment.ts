@@ -45,8 +45,6 @@ export function syncPaidOrderToShiprocket(order: WcOrder): void {
     (sum, line) => sum + parseFloat(line.total || "0"),
     0,
   );
-  const totalSavingsMeta = (order.meta_data || []).find((m) => m.key === "_total_savings");
-  const actualDiscount = totalSavingsMeta ? parseFloat(totalSavingsMeta.value) || 0 : 0;
 
   createShiprocketOrder({
     orderId: order.id,
@@ -66,7 +64,9 @@ export function syncPaidOrderToShiprocket(order: WcOrder): void {
     paymentMethod: "prepaid",
     subtotal,
     shippingCharges: shippingTotal,
-    discount: actualDiscount,
+    // `subtotal` is the WC order total, which is already net of discounts
+    // (fee lines) — sending the discount again would double-count it.
+    discount: 0,
     total: subtotal,
   }).catch((err) =>
     console.error("[Fulfillment] Shiprocket sync failed (non-blocking):", err),

@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Refund and Returns Policy | Veloria Vault",
+  title: "Refund and Returns Policy",
   description: "Read our comprehensive refund and returns policy.",
 };
 

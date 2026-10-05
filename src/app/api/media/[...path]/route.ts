@@ -19,13 +19,17 @@ export const dynamic = "force-dynamic";
 
 const HOSTINGER_IP = "145.79.212.69";
 
+// Only proxy static media. Anything else (html, php, xml...) served from the
+// main origin could run script as www.veloriavault.com.
+const ALLOWED_EXTENSIONS = /\.(jpe?g|png|gif|webp|avif|svg|ico|mp4|webm|woff2?|ttf|css)$/i;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
   const safe = safeMediaPath(path);
-  if (!safe) {
+  if (!safe || !ALLOWED_EXTENSIONS.test(safe)) {
     return new NextResponse("Not Found", { status: 404 });
   }
   const filePath = `/wp-content/${safe}`;
@@ -98,6 +102,9 @@ export async function GET(
         "Cache-Control": "public, max-age=604800, s-maxage=604800, immutable",
         "Access-Control-Allow-Origin": "*",
         "X-Media-Proxy": "hit",
+        "X-Content-Type-Options": "nosniff",
+        // Neutralise scripts inside SVGs opened directly
+        "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
       },
     });
   } catch (error) {

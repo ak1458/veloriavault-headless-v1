@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "About Us | Veloria Vault",
+  title: "About Us",
   description: "Learn about Veloria Vault - timeless leather goods for the modern minimalist.",
   alternates: {
     canonical: "/about",

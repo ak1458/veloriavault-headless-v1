@@ -13,6 +13,7 @@ import OrderSummary from "@/components/OrderSummary";
 import CouponSection from "@/components/CouponSection";
 import { SpinWheel } from "@/components/SpinWheel";
 import RazorpayPayment from "@/components/RazorpayPayment";
+import { indianPhoneSchema, indianPincodeSchema } from "@/lib/address-validation";
 
 const checkoutSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -21,8 +22,8 @@ const checkoutSchema = z.object({
   address: z.string().min(5, "Please enter a complete address"),
   city: z.string().min(2, "City is required"),
   state: z.string().min(2, "State is required"),
-  postalCode: z.string().min(4, "Valid postal code is required"),
-  phone: z.string().min(10, "Please enter a valid 10-digit phone number"),
+  postalCode: indianPincodeSchema,
+  phone: indianPhoneSchema,
 });
 
 type CheckoutFormData = z.infer<typeof checkoutSchema>;
@@ -198,7 +199,9 @@ export default function CheckoutPage() {
           paymentMethod: "card",
           shippingMethod: "standard",
           isPrepaid: true,
-          couponCodes: [],
+          // Must match the codes used when the Razorpay amount was created,
+          // or the server recomputes a different total.
+          couponCodes: latestCalculation?.appliedCoupons.map((c) => c.coupon.code) ?? [],
           totals: {
             subtotal: latestCalculation?.originalSubtotal || 0,
             shipping: latestCalculation?.shippingCost || 0,
@@ -583,8 +586,10 @@ export default function CheckoutPage() {
 
                   {/* Order Summary for Mobile */}
                   <div className="lg:hidden mt-6">
-                    {/* [PAUSED] <CouponSection /> */}
-                    <OrderSummary showCouponSection={false} />
+                    <CouponSection />
+                    <div className="mt-4">
+                      <OrderSummary showCouponSection={false} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -634,7 +639,7 @@ export default function CheckoutPage() {
             {/* Summary Side */}
           <div className="lg:col-span-5 space-y-4 hidden lg:block">
             <OrderSummary />
-            {/* [PAUSED] <CouponSection /> */}
+            <CouponSection />
           </div>
 
         </div>

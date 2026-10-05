@@ -380,6 +380,12 @@ export default function AgenticChatWidget() {
   };
 
   const handleBuyNow = (product: ChatProductCard) => {
+    // Colour-variant parents must be configured on the product page first.
+    if (product.type === "variable") {
+      window.location.assign(product.href);
+      return;
+    }
+
     addItem({
       id: product.id,
       name: product.name,

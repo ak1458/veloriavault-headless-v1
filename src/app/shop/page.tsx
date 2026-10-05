@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 export const revalidate = 300; // ISR: refresh every 5 minutes
 
 export const metadata: Metadata = {
-  title: "Shop | Veloria Vault",
+  title: "Shop",
   description: "Browse Veloria Vault's collection of luxury leather handbags, totes, satchels, and accessories.",
   alternates: {
     canonical: "/shop",

@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OUTBOUND_USER_AGENT } from "@/lib/site";
+import { getWcOrder } from "@/lib/woocommerce-orders";
+import { rateLimit, getClientIP } from "@/lib/rate-limit";
 
 const WC_API_URL = process.env.WC_API_URL?.trim();
-const CONSUMER_KEY = process.env.WC_CONSUMER_KEY?.trim();
-const CONSUMER_SECRET = process.env.WC_CONSUMER_SECRET?.trim();
-
-function getAuthHeader(): string {
-  return "Basic " + Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString("base64");
-}
+const NOT_FOUND_MESSAGE =
+  "We couldn't find an order with that number and email. Please check both and try again.";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +19,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!WC_API_URL || !CONSUMER_KEY || !CONSUMER_SECRET) {
+    if (!rateLimit(`track:${getClientIP(request)}`, 10, 60_000).success) {
+      return NextResponse.json({ error: "Too many attempts. Please try again in a minute." }, { status: 429 });
+    }
+
+    if (!WC_API_URL) {
       console.error("[Track Order] Missing environment variables");
       return NextResponse.json(
         { error: "Server configuration error" },
@@ -30,48 +31,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Search for order by order number
-    const response = await fetch(
-      `${WC_API_URL}/orders?number=${encodeURIComponent(orderNumber)}`,
-      {
-        headers: {
-          Authorization: getAuthHeader(),
-          "Content-Type": "application/json",
-          "User-Agent": OUTBOUND_USER_AGENT,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("[Track Order] WooCommerce API error:", errorData);
-      return NextResponse.json(
-        { error: "Failed to fetch order" },
-        { status: 500 }
-      );
+    // Order number == WooCommerce order id (no sequential-number plugin).
+    // NOTE: the WC REST list endpoint has no `number` filter — it silently
+    // ignores it and returns the newest orders, so fetch by id instead.
+    const normalizedNumber = orderNumber.replace(/^#/, "").trim();
+    if (!/^\d+$/.test(normalizedNumber)) {
+      return NextResponse.json({ error: NOT_FOUND_MESSAGE }, { status: 404 });
     }
 
-    const orders = await response.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw WC REST order shape
+    const order = (await getWcOrder(normalizedNumber)) as any;
 
-    if (!orders || orders.length === 0) {
-      return NextResponse.json(
-        { error: "Order not found. Please check your order number and try again." },
-        { status: 404 }
-      );
-    }
-
-    // Get the first matching order
-    const order = orders[0];
-
-    // Verify email matches (security check)
-    const orderEmail = order.billing?.email?.toLowerCase().trim();
-    const providedEmail = email.toLowerCase().trim();
-
-    if (orderEmail !== providedEmail) {
-      return NextResponse.json(
-        { error: "Email address does not match our records" },
-        { status: 403 }
-      );
+    // Same response for "no such order" and "wrong email" so the endpoint
+    // can't be used to discover which order numbers exist.
+    const orderEmail = String(order?.billing?.email ?? "").toLowerCase().trim();
+    if (!order || !orderEmail || orderEmail !== email.toLowerCase().trim()) {
+      return NextResponse.json({ error: NOT_FOUND_MESSAGE }, { status: 404 });
     }
 
     // Real amount charged (custom discounts live in meta, not the WC total).

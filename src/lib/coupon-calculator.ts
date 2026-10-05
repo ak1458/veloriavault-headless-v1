@@ -11,6 +11,11 @@ import {
 import { CartItem } from "@/store/cart";
 import { AVAILABLE_COUPONS } from "@/config/coupons";
 
+// The spin wheel / scratch card are switched off, so the dynamic LUCKYDRAW code
+// must not be redeemable (its cookie endpoint is still reachable). Flip to true
+// only when a lucky-draw promotion is actually running.
+const LUCKY_DRAW_ENABLED = false;
+
 export interface CalculationInput {
   items: CartItem[];
   appliedCouponCodes: string[];
@@ -128,8 +133,8 @@ function resolveValidCoupons(
 }
 
 export function calculateDiscounts(input: CalculationInput): DiscountCalculation {
-  const { items, isPrepaid } = input;
-  // const { appliedCouponCodes, luckyDrawDiscount } = input; // [PAUSED] Uncomment when re-enabling manual coupons
+  const { items, isPrepaid, appliedCouponCodes } = input;
+  const luckyDrawDiscount = LUCKY_DRAW_ENABLED ? input.luckyDrawDiscount : undefined;
 
   const originalSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -142,28 +147,40 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
     };
   }
 
-  /* =========================================================================
-   * [PAUSED OFFERS - TO RE-ENABLE IN FUTURE, UNCOMMENT THIS BLOCK]
-   * 1. Automatic Tier Discount (1 item = 15%, 2+ items = 20%)
-   * const tierPercent = itemCount >= 2 ? 20 : 15;
-   * const rawTierDiscount = Math.round((originalSubtotal * tierPercent) / 100);
-   *
-   * 3. Manual Coupons & Lucky Draw
-   * const appliedCoupons = resolveValidCoupons(
-   *   appliedCouponCodes,
-   *   originalSubtotal,
-   *   itemCount,
-   *   luckyDrawDiscount,
-   * );
-   * const rawManualDiscount = appliedCoupons.reduce((sum, item) => sum + item.rawAmount, 0);
-   * ========================================================================= */
+  // 1. Automatic Tier Discount (1 item = 15%, 2+ items = 20%)
+  const tierPercent = itemCount >= 2 ? 20 : 15;
+  const rawTierDiscount = Math.round((originalSubtotal * tierPercent) / 100);
 
-  // 1. Prepaid Discount (5% Off on Prepaid / Online Orders)
-  const finalPrepaidDiscount = isPrepaid
+  // 2. Manual coupons (codes from config/coupons.ts)
+  const resolvedCoupons = resolveValidCoupons(
+    appliedCouponCodes ?? [],
+    originalSubtotal,
+    itemCount,
+    luckyDrawDiscount,
+  );
+  const rawManualDiscount = resolvedCoupons.reduce((sum, item) => sum + item.rawAmount, 0);
+
+  // 3. Prepaid Discount (5% Off on Prepaid / Online Orders)
+  const rawPrepaidDiscount = isPrepaid
     ? Math.round((originalSubtotal * PREPAID_BONUS_PERCENT) / 100)
     : 0;
 
-  const totalDiscountsApplied = finalPrepaidDiscount;
+  // 4. Global cap: total of ALL discounts never exceeds MAX_DISCOUNT_PERCENT of
+  // the subtotal. Above it, every discount is scaled down proportionally
+  // (floored, so the cap can never be overshot by rounding).
+  const rawTotalDiscount = rawTierDiscount + rawManualDiscount + rawPrepaidDiscount;
+  const maxDiscount = Math.floor((originalSubtotal * MAX_DISCOUNT_PERCENT) / 100);
+  const isCapped = rawTotalDiscount > maxDiscount;
+  const scale = isCapped ? maxDiscount / rawTotalDiscount : 1;
+  const finalTierDiscount = Math.floor(rawTierDiscount * scale);
+  const finalPrepaidDiscount = Math.floor(rawPrepaidDiscount * scale);
+  const appliedCoupons: CartCoupon[] = resolvedCoupons.map((entry) => ({
+    ...entry,
+    discountAmount: Math.floor(entry.rawAmount * scale),
+  }));
+  const finalManualDiscount = appliedCoupons.reduce((sum, item) => sum + item.discountAmount, 0);
+
+  const totalDiscountsApplied = finalTierDiscount + finalManualDiscount + finalPrepaidDiscount;
   const subtotalAfterDiscounts = Math.max(0, originalSubtotal - totalDiscountsApplied);
   
   const shippingCost = originalSubtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_COST;
@@ -173,14 +190,12 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
   // Formatting Savings Breakdown
   const savingsBreakdown: { label: string; amount: number }[] = [];
   
-  /* [PAUSED] Uncomment to show tier savings line:
   if (finalTierDiscount > 0) {
     savingsBreakdown.push({
-      label: itemCount >= 2 ? "Automatic Tier Discount (20%)" : "Automatic Tier Discount (15%)",
+      label: `Automatic Tier Discount (${tierPercent}%)`,
       amount: finalTierDiscount,
     });
   }
-  */
   
   if (finalPrepaidDiscount > 0) {
     savingsBreakdown.push({
@@ -189,27 +204,27 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
     });
   }
   
-  /* [PAUSED] Uncomment to show applied coupon savings:
   appliedCoupons.forEach(({ coupon, discountAmount }) => {
-    savingsBreakdown.push({ 
-      label: coupon.code === "LUCKYDRAW" ? "Lucky Draw Discount" : `Coupon: ${coupon.code}`, 
-      amount: discountAmount 
-    });
+    if (discountAmount > 0) {
+      savingsBreakdown.push({
+        label: coupon.code === "LUCKYDRAW" ? "Lucky Draw Discount" : `Coupon: ${coupon.code}`,
+        amount: discountAmount,
+      });
+    }
   });
-  */
 
   return {
     originalSubtotal,
     itemCount,
     isPrepaid,
-    tierDiscount: 0,
+    tierDiscount: finalTierDiscount,
     prepaidDiscount: finalPrepaidDiscount,
-    manualCouponDiscount: 0,
-    appliedCoupons: [],
+    manualCouponDiscount: finalManualDiscount,
+    appliedCoupons,
     codFee,
     shippingCost,
     finalTotal,
-    isCapped: false,
+    isCapped,
     savingsBreakdown,
   };
 }
@@ -221,9 +236,7 @@ export function validateCoupon(
   luckyDrawDiscount?: number,
   existingCoupons: string[] = [],
 ): { valid: boolean; coupon?: Coupon; error?: string } {
-  // [PAUSED] Coupons are currently disabled. To re-enable, uncomment the code below:
-  /*
-  const coupon = getCouponByCode(code, luckyDrawDiscount);
+  const coupon = getCouponByCode(code, LUCKY_DRAW_ENABLED ? luckyDrawDiscount : undefined);
 
   if (!coupon) {
     if (code.toUpperCase() === "LUCKYDRAW") {
@@ -243,7 +256,7 @@ export function validateCoupon(
       return { valid: false, error: "This coupon cannot be combined with other offers." };
     }
     const hasNonStackable = existingCoupons
-      .map(c => getCouponByCode(c, luckyDrawDiscount))
+      .map(c => getCouponByCode(c, LUCKY_DRAW_ENABLED ? luckyDrawDiscount : undefined))
       .some(c => c && !c.stackable);
       
     if (hasNonStackable) {
@@ -251,7 +264,7 @@ export function validateCoupon(
     }
     
     const existingCategories = existingCoupons
-      .map(c => getCouponByCode(c, luckyDrawDiscount)?.category)
+      .map(c => getCouponByCode(c, LUCKY_DRAW_ENABLED ? luckyDrawDiscount : undefined)?.category)
       .filter(Boolean);
       
     if (existingCategories.includes(coupon.category)) {
@@ -260,6 +273,4 @@ export function validateCoupon(
   }
 
   return { valid: true, coupon };
-  */
-  return { valid: false, error: "Coupons are temporarily disabled." };
 }

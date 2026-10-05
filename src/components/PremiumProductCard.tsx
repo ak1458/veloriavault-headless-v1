@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useWishlistStore } from "@/store/wishlist";
 import { useCartStore } from "@/store/cart";
@@ -37,8 +38,21 @@ export default function PremiumProductCard({
     toggleItem({ id: product.id, name: product.name, slug: product.slug, href: productLink, price, image, category: categoryName });
   };
 
+  // Variable (colour) products need a colour chosen on the product page;
+
+  // adding the parent directly would create an order with no colour.
+
+  const needsOptions = product.type === "variable";
+
+  const router = useRouter();
+
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
+    if (needsOptions) {
+      router.push(productLink);
+      return;
+    }
     addItem({ id: product.id, name: product.name, slug: product.slug, href: productLink, price, image, category: categoryName });
     openCart();
   };
@@ -84,7 +98,7 @@ export default function PremiumProductCard({
              onClick={handleAddToCart}
              className="w-full bg-white text-black py-3 rounded-lg text-[10px] font-bold tracking-widest uppercase shadow-xl pointer-events-auto hover:bg-[#b59a5c] hover:text-white transition-colors"
           >
-             Quick Add
+             {needsOptions ? "Choose Colour" : "Quick Add"}
           </button>
         </div>
       </Link>
@@ -143,7 +157,7 @@ export default function PremiumProductCard({
           onClick={handleAddToCart}
           className="mt-auto w-full py-3 bg-black text-white text-[10px] font-bold tracking-[0.2em] uppercase rounded hover:bg-[#b59a5c] transition-all shadow-md shadow-black/5"
         >
-          Add to Cart
+          {needsOptions ? "Choose Colour" : "Add to Cart"}
         </button>
       </div>
     </div>

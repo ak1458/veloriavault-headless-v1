@@ -3,6 +3,7 @@
 
 import type { MouseEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useWishlistStore } from "@/store/wishlist";
 import { useCartStore } from "@/store/cart";
 import { getRelativeProductLink, type WCProduct } from "@/lib/woocommerce";
@@ -41,9 +42,22 @@ export default function ProductCard({
     });
   };
 
+  // Variable (colour) products need a colour chosen on the product page;
+
+  // adding the parent directly would create an order with no colour.
+
+  const needsOptions = product.type === "variable";
+
+  const router = useRouter();
+
+
   const handleAddToCart = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (needsOptions) {
+      router.push(productLink);
+      return;
+    }
     addItem({
       id: product.id,
       name: product.name,
@@ -148,7 +162,7 @@ export default function ProductCard({
             className="button product_type_variation add_to_cart_button add-to-cart-loop"
             onClick={handleAddToCart}
           >
-            <span>Add to cart</span>
+            <span>{needsOptions ? "Choose colour" : "Add to cart"}</span>
           </button>
         </div>
       </div>

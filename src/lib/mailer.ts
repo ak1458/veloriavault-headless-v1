@@ -52,3 +52,14 @@ export async function sendReturnRequestEmail(opts: {
      </div>`,
   );
 }
+
+/** Notify the store inbox of a newsletter signup (the only durable record of it). */
+export async function sendNewsletterSignupEmail(to: string, subscriberEmail: string): Promise<void> {
+  const safeEmail = subscriberEmail.replace(/</g, "&lt;");
+  await sendMail(
+    to,
+    `Newsletter signup — ${subscriberEmail}`,
+    `New newsletter subscriber: ${subscriberEmail}`,
+    `<div style="font-family:sans-serif"><p><b>New newsletter subscriber:</b> ${safeEmail}</p></div>`,
+  );
+}

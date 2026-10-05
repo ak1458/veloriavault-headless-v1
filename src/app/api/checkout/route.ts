@@ -17,12 +17,13 @@ import { z } from "zod";
 import crypto from "crypto";
 import { calculateDiscounts } from "@/lib/coupon-calculator";
 import { buildOrderFeeLines } from "@/lib/order-fees";
-import { getProductsByIds, getProductById } from "@/lib/woocommerce";
+import { getProductsByIds, getProductById, type WCProduct } from "@/lib/woocommerce";
 import { verifyToken } from "@/lib/auth/jwt";
 import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 import { createShiprocketOrder } from "@/lib/shiprocket";
 import { syncPaidOrderToShiprocket } from "@/lib/order-fulfillment";
 import jwt from "jsonwebtoken";
+import { indianPhoneSchema, indianPincodeSchema } from "@/lib/address-validation";
 
 // Basic HTML sanitizer for security
 function stripHtmlTags(str: string): string {
@@ -36,8 +37,8 @@ const checkoutSchema = z.object({
   address: z.string().min(5, "Address is required").transform(stripHtmlTags),
   city: z.string().min(2, "City is required").transform(stripHtmlTags),
   state: z.string().min(2, "State is required").transform(stripHtmlTags),
-  postalCode: z.string().min(4, "Valid postal code is required").transform(stripHtmlTags),
-  phone: z.string().min(10, "Valid phone number is required").transform(stripHtmlTags),
+  postalCode: indianPincodeSchema,
+  phone: indianPhoneSchema,
   paymentMethod: z.enum(["card", "cod"]),
   shippingMethod: z.enum(["standard", "express"]).default("standard"),
   isPrepaid: z.boolean().default(true),
@@ -76,23 +77,78 @@ function getAuthHeader(): string {
   return "Basic " + Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString("base64");
 }
 
+interface RazorpayOrder {
+  id: string;
+  amount: number;
+  amount_paid: number;
+  status: string;
+  notes?: Record<string, string> | [];
+}
+
+function razorpayAuth(keyId: string, keySecret: string): string {
+  return "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+}
+
+/** Fetch a Razorpay order; null on any failure (caller must not block a paid customer). */
+async function fetchRazorpayOrder(
+  id: string,
+  keyId: string,
+  keySecret: string,
+): Promise<(RazorpayOrder & { notes?: Record<string, string> }) | null> {
+  if (!keyId || !keySecret) return null;
+  try {
+    const res = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(id)}`, {
+      headers: { Authorization: razorpayAuth(keyId, keySecret) },
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const order = (await res.json()) as RazorpayOrder;
+    // Razorpay returns `notes: []` when empty
+    return { ...order, notes: Array.isArray(order.notes) ? {} : order.notes };
+  } catch (error) {
+    console.error("[Checkout] Razorpay order fetch failed:", error);
+    return null;
+  }
+}
+
+/** Record the WC order on the Razorpay order so a replayed payment is detected. */
+async function tagRazorpayOrder(
+  id: string,
+  notes: Record<string, string>,
+  keyId: string,
+  keySecret: string,
+): Promise<void> {
+  try {
+    const existing = await fetchRazorpayOrder(id, keyId, keySecret);
+    await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { Authorization: razorpayAuth(keyId, keySecret), "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: { ...(existing?.notes ?? {}), ...notes } }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (error) {
+    console.error("[Checkout] Razorpay order tagging failed (non-blocking):", error);
+  }
+}
+
 /**
  * Validate stock availability for all items
  */
 async function validateStock(
   items: Array<{ id: number; name: string; quantity: number }>
-): Promise<{ valid: boolean; errors: string[] }> {
+): Promise<{ valid: boolean; errors: string[]; products: WCProduct[] }> {
   const errors: string[] = [];
   
   // Fetch real products with stock info
   const productIds = items.map((i) => i.id);
-  const realProducts = await getProductsByIds(productIds);
+  const realProducts = await getProductsByIds(productIds, { fresh: true });
   
   // For any missing products (likely variations), fetch individually
   const missingIds = productIds.filter((id) => !realProducts.find((p) => p.id === id));
   if (missingIds.length > 0) {
     const individualFetches = await Promise.all(
-      missingIds.map((id) => getProductById(id))
+      missingIds.map((id) => getProductById(id, { fresh: true }))
     );
     for (const p of individualFetches) {
       if (p) realProducts.push(p);
@@ -108,6 +164,12 @@ async function validateStock(
       continue;
     }
     
+    if (product.type === "variable") {
+      // Parent of a colour-variant product: the customer never picked a colour.
+      errors.push(`Please choose a colour for ${product.name}`);
+      continue;
+    }
+
     if (product.stock_status === "outofstock") {
       errors.push(`${product.name} is out of stock`);
       continue;
@@ -122,7 +184,7 @@ async function validateStock(
     }
   }
 
-  return { valid: errors.length === 0, errors };
+  return { valid: errors.length === 0, errors, products: realProducts };
 }
 
 export async function POST(request: NextRequest) {
@@ -183,8 +245,8 @@ export async function POST(request: NextRequest) {
     // ========================================
     // PRICE VALIDATION (Tamper-proof)
     // ========================================
-    const productIds = validatedData.items.map((i) => i.id);
-    const realProducts = await getProductsByIds(productIds);
+    // Reuse the live (uncached) products fetched for the stock check.
+    const realProducts = stockValidation.products;
 
     // Map real prices to items
     const secureItems = validatedData.items.map((clientItem) => {
@@ -235,11 +297,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate discounts server-side (only 5% prepaid bonus active)
+    // Prepaid bonus / COD fee follow the actual payment method, never the
+    // client-sent isPrepaid flag (otherwise COD could claim the prepaid bonus).
+    const isPrepaid = validatedData.paymentMethod === "card";
+
+    // Calculate discounts server-side (tier 15%/20% + 5% prepaid bonus)
     const calculation = calculateDiscounts({
       items: secureItems,
       appliedCouponCodes: validatedData.couponCodes,
-      isPrepaid: validatedData.isPrepaid,
+      isPrepaid,
       luckyDrawDiscount,
     });
 
@@ -318,6 +384,7 @@ export async function POST(request: NextRequest) {
     // If prepaid, verify the cryptographic signature before creating the order
     // ========================================
     const isPaidCard = validatedData.paymentMethod === "card" && Boolean(validatedData.paymentDetails);
+    let paidAmountPaise: number | null = null;
     if (isPaidCard) {
       if (!RAZORPAY_KEY_SECRET) {
         return NextResponse.json(
@@ -332,13 +399,45 @@ export async function POST(request: NextRequest) {
         .update(`${razorpayOrderId}|${paymentId}`)
         .digest("hex");
 
-      if (expectedSignature !== razorpaySignature) {
-        console.error(`[Checkout] Signature mismatch: expected ${expectedSignature}, got ${razorpaySignature}`);
+      const sigBuf = Buffer.from(razorpaySignature);
+      const expBuf = Buffer.from(expectedSignature);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        console.error(`[Checkout] Signature mismatch for Razorpay order ${razorpayOrderId}`);
         return NextResponse.json(
           { error: "Payment verification failed" },
           { status: 403 }
         );
       }
+
+      // Read the Razorpay order: guards against replaying one payment for
+      // several orders, and against paying for a small cart then submitting
+      // a bigger one with the same (valid) signature.
+      const rzpOrder = await fetchRazorpayOrder(razorpayOrderId, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET);
+      if (rzpOrder) {
+        const existingWcOrderId = rzpOrder.notes?.wc_order_id;
+        if (existingWcOrderId) {
+          console.warn(`[Checkout] Razorpay order ${razorpayOrderId} already fulfilled as WC #${existingWcOrderId}`);
+          return NextResponse.json({
+            success: true,
+            orderId: Number(existingWcOrderId),
+            orderNumber: rzpOrder.notes?.wc_order_number || existingWcOrderId,
+            total: rzpOrder.amount_paid / 100,
+            paymentRequired: false,
+            alreadyProcessed: true,
+          });
+        }
+        paidAmountPaise = rzpOrder.amount_paid;
+      }
+    }
+
+    // Customer has already paid: never reject here. A mismatch (price changed
+    // between init and payment, or a tampered cart) puts the order on hold
+    // for manual review instead of silently shipping or losing the payment.
+    const expectedPaise = Math.round(calculation.finalTotal * 100);
+    const amountMismatch =
+      isPaidCard && paidAmountPaise !== null && Math.abs(paidAmountPaise - expectedPaise) > 1;
+    if (amountMismatch) {
+      console.error(`[Checkout] Paid amount mismatch: paid ${paidAmountPaise} paise, cart ${expectedPaise} paise`);
     }
 
     // ========================================
@@ -350,7 +449,7 @@ export async function POST(request: NextRequest) {
         ? "UPI / Card / Net Banking (Razorpay)" 
         : "Cash on Delivery",
       set_paid: isPaidCard,
-      status: "processing", // Real confirmed orders start as processing
+      status: amountMismatch ? "on-hold" : "processing", // Real confirmed orders start as processing
       ...(isPaidCard ? { transaction_id: validatedData.paymentDetails!.paymentId } : {}),
       currency: "INR",
       billing: {
@@ -395,7 +494,7 @@ export async function POST(request: NextRequest) {
       fee_lines: buildOrderFeeLines(calculation),
       meta_data: [
         { key: "_order_source", value: "Next.js Headless" },
-        { key: "_is_prepaid", value: validatedData.isPrepaid ? "yes" : "no" },
+        { key: "_is_prepaid", value: isPrepaid ? "yes" : "no" },
         { key: "_tier_discount", value: calculation.tierDiscount.toString() },
         { key: "_prepaid_discount", value: calculation.prepaidDiscount.toString() },
         { key: "_manual_coupon_discount", value: calculation.manualCouponDiscount.toString() },
@@ -406,6 +505,9 @@ export async function POST(request: NextRequest) {
           { key: "_razorpay_order_id", value: validatedData.paymentDetails!.razorpayOrderId },
           { key: "_razorpay_payment_id", value: validatedData.paymentDetails!.paymentId },
           { key: "_payment_status", value: "completed" },
+          ...(amountMismatch ? [
+            { key: "_amount_mismatch", value: `paid ${paidAmountPaise! / 100}, cart ${calculation.finalTotal}` },
+          ] : []),
         ] : []),
         { key: "_customer_ip", value: clientIP },
       ],
@@ -433,10 +535,19 @@ export async function POST(request: NextRequest) {
 
     const order = await response.json();
 
+    if (isPaidCard) {
+      await tagRazorpayOrder(
+        validatedData.paymentDetails!.razorpayOrderId,
+        { wc_order_id: String(order.id), wc_order_number: String(order.number) },
+        RAZORPAY_KEY_ID,
+        RAZORPAY_KEY_SECRET,
+      );
+    }
+
     // ========================================
     // SHIPROCKET SYNC
     // ========================================
-    if (isPaidCard) {
+    if (isPaidCard && !amountMismatch) {
       syncPaidOrderToShiprocket(order);
     } else if (validatedData.paymentMethod === "cod") {
       createShiprocketOrder({
@@ -461,7 +572,8 @@ export async function POST(request: NextRequest) {
         paymentMethod: "cod",
         subtotal: calculation.originalSubtotal,
         shippingCharges: calculation.shippingCost,
-        discount: calculation.prepaidDiscount + calculation.manualCouponDiscount,
+        discount: calculation.tierDiscount + calculation.prepaidDiscount + calculation.manualCouponDiscount,
+        codFee: calculation.codFee,
         total: calculation.finalTotal,
       }).catch((err) => console.error("[Checkout] Shiprocket COD sync failed (non-blocking):", err));
     }

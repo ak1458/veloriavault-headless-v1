@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Shipping Policy | Veloria Vault",
+  title: "Shipping Policy",
   description: "Learn about our shipping procedures, timelines, and delivery terms.",
 };
 

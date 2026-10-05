@@ -32,7 +32,21 @@ export function verifyToken(token: string): JWTPayload | null {
   try {
     // Pin the algorithm so a forged token can't downgrade to "none" or swap to
     // an asymmetric alg (alg-confusion). We only ever sign with HS256.
-    return jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] }) as unknown as JWTPayload;
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] }) as
+      Partial<JWTPayload> & { scope?: unknown; otpHash?: unknown };
+    // Other tokens (OTP challenge/session, lucky draw) share JWT_SECRET. Only
+    // accept real customer tokens, or e.g. an OTP challenge requested for
+    // someone else's email would pass as a login for that email.
+    if (
+      typeof payload.userId !== "number" ||
+      payload.userId <= 0 ||
+      typeof payload.email !== "string" ||
+      payload.scope !== undefined ||
+      payload.otpHash !== undefined
+    ) {
+      return null;
+    }
+    return payload as JWTPayload;
   } catch {
     return null;
   }

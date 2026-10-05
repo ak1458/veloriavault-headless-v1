@@ -8,9 +8,10 @@ import { useWishlistStore } from "@/store/wishlist";
 import { Menu, X, ShoppingBag, Heart, User, ChevronDown, Package } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import CartDrawer from "./CartDrawer";
+import AnnouncementBar from "./AnnouncementBar";
 
-const DESKTOP_LOGO = "https://api.veloriavault.com/wp-content/uploads/2026/02/logo.svg";
-const MOBILE_LOGO = "https://api.veloriavault.com/wp-content/uploads/2026/02/logo.svg";
+const DESKTOP_LOGO = "/logo.svg";
+const MOBILE_LOGO = "/logo.svg";
 
 type SubItem = { label: string; href: string };
 type MenuColumn = { title: string; items: SubItem[] };
@@ -122,9 +123,7 @@ export default function PremiumHeader() {
   return (
     <>
       {/* Top Announcement Bar */}
-      <div className="bg-black px-4 py-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-white sm:text-[11px] sm:tracking-[0.2em]">
-        Get 5% Extra Off on All Prepaid Orders
-      </div>
+      <AnnouncementBar />
 
       {/* Main Header */}
       <header className="sticky top-0 z-50 bg-[#faf8f5] border-b border-gray-200">

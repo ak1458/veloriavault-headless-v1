@@ -5,6 +5,7 @@ import PremiumHeader from "@/components/PremiumHeader";
 import PremiumFooter from "@/components/PremiumFooter";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import ChatWidgetLoader from "@/components/ChatWidgetLoader";
+import { SITE_URL } from "@/lib/site";
 
 
 const inter = Inter({
@@ -30,10 +31,7 @@ export const metadata: Metadata = {
   },
   description:
     "Timeless leather goods for the modern minimalist. Handcrafted genuine leather handbags, totes, satchels and clutches.",
-  metadataBase: new URL("https://veloriavault.com"),
-  alternates: {
-    canonical: "/",
-  },
+  metadataBase: new URL(SITE_URL),
   robots: {
     index: true,
     follow: true,
@@ -74,8 +72,8 @@ const structuredData = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Veloria Vault",
-  url: "https://veloriavault.com",
-  logo: "https://veloriavault.com/logo.svg",
+  url: SITE_URL,
+  logo: `${SITE_URL}/logo.svg`,
   description: "Timeless leather goods for the modern minimalist. Handcrafted genuine leather handbags, totes, satchels and clutches.",
   sameAs: [
     "https://www.instagram.com/veloriavault",
@@ -97,7 +95,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="canonical" href="https://veloriavault.com" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

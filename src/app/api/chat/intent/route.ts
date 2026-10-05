@@ -399,6 +399,7 @@ export async function POST(request: NextRequest) {
       category: p.categories?.[0]?.name || "",
       shortDescription: stripHtml(p.short_description).slice(0, 120),
       stockStatus: p.stock_status,
+      type: p.type,
       href: `/product/${p.slug}`,
     }));
 

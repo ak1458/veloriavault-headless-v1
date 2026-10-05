@@ -4,7 +4,12 @@ import jwt from "jsonwebtoken";
 // Read the secret at call time (not module load) so the build never fails and
 // tests can set it in beforeAll.
 function secret(): string {
-  return process.env.JWT_SECRET || "build_fallback_secret_not_for_production";
+  const value = process.env.JWT_SECRET;
+  if (!value) {
+    // Fail closed: a known fallback secret would let anyone forge sessions.
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return value;
 }
 
 /** Cryptographically-random 6-digit code, zero-padded. */
@@ -12,8 +17,16 @@ export function generateOtp(): string {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
-export function hashOtp(code: string): string {
-  return crypto.createHash("sha256").update(code).digest("hex");
+/**
+ * Keyed hash of the code. The challenge JWT is readable by the client, so a
+ * plain sha256 of a 6-digit code could be brute-forced offline in milliseconds;
+ * an HMAC with the server secret cannot.
+ */
+export function hashOtp(code: string, email: string): string {
+  return crypto
+    .createHmac("sha256", secret())
+    .update(`${email.toLowerCase().trim()}:${code}`)
+    .digest("hex");
 }
 
 /**
@@ -23,7 +36,7 @@ export function hashOtp(code: string): string {
  */
 export function createChallengeToken(email: string, code: string): string {
   return jwt.sign(
-    { email: email.toLowerCase().trim(), otpHash: hashOtp(code) },
+    { email: email.toLowerCase().trim(), otpHash: hashOtp(code, email), scope: "otp_challenge" },
     secret(),
     { expiresIn: "10m" },
   );
@@ -34,8 +47,14 @@ export function verifyChallenge(token: string, code: string): { email: string } 
     const p = jwt.verify(token, secret(), { algorithms: ["HS256"] }) as {
       email: string;
       otpHash: string;
+      scope?: string;
     };
-    return p.otpHash === hashOtp(code) ? { email: p.email } : null;
+    if (p.scope !== "otp_challenge" || typeof p.otpHash !== "string") return null;
+    const expected = Buffer.from(hashOtp(code, p.email));
+    const actual = Buffer.from(p.otpHash);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual)
+      ? { email: p.email }
+      : null;
   } catch {
     return null;
   }

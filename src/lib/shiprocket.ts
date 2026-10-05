@@ -135,7 +135,10 @@ export async function createShiprocketOrder(params: {
   paymentMethod: "prepaid" | "cod";
   subtotal: number;
   shippingCharges: number;
+  /** Order-level discount off `subtotal` (tier / prepaid / coupons). */
   discount: number;
+  /** COD handling fee the courier must also collect. */
+  codFee?: number;
   total: number;
 }): Promise<{ success: boolean; shiprocketOrderId?: number; error?: string }> {
   try {
@@ -168,6 +171,11 @@ export async function createShiprocketOrder(params: {
       payment_method: params.paymentMethod === "cod" ? "COD" : "Prepaid",
       sub_total: params.subtotal,
       shipping_charges: params.shippingCharges,
+      // Shiprocket COD collectable = sub_total + shipping + transaction_charges
+      // - total_discount. Without these the courier collected full MRP and
+      // never the COD fee, instead of what the customer was quoted.
+      total_discount: params.discount,
+      transaction_charges: params.codFee ?? 0,
       // Shiprocket requires length, breadth, height, weight
       length: 25,
       breadth: 20,
