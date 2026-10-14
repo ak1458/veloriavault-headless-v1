@@ -26,15 +26,15 @@ const totalDiscount = (c: ReturnType<typeof calculateDiscounts>) =>
 describe("coupon engine", () => {
   it("stacks tier + coupon + prepaid under the cap", () => {
     const c = calculateDiscounts({ items: [item(1, 2999)], appliedCouponCodes: ["ff10"], isPrepaid: true });
-    expect(c.tierDiscount).toBe(450);
+    expect(c.tierDiscount).toBe(300);
     expect(c.manualCouponDiscount).toBe(300);
     expect(c.prepaidDiscount).toBe(150);
     expect(c.isCapped).toBe(false);
-    expect(c.finalTotal).toBe(2999 - 900);
-    expect(c.savingsBreakdown.reduce((s, x) => s + x.amount, 0)).toBe(900);
+    expect(c.finalTotal).toBe(2999 - 750);
+    expect(c.savingsBreakdown.reduce((s, x) => s + x.amount, 0)).toBe(750);
   });
 
-  it("caps total discount at 35% (2 bags + 20% code + prepaid = 45%)", () => {
+  it("caps total discount at 35% (2 bags + 20% code + prepaid = 40%)", () => {
     const c = calculateDiscounts({ items: [item(1, 2000, 2)], appliedCouponCodes: ["DIWALI20"], isPrepaid: true });
     expect(c.isCapped).toBe(true);
     expect(totalDiscount(c)).toBeLessThanOrEqual(1400);
@@ -55,8 +55,9 @@ describe("coupon engine", () => {
 
   it("COD: tier + coupon, no prepaid bonus, plus COD fee", () => {
     const c = calculateDiscounts({ items: [item(1, 2000)], appliedCouponCodes: ["FF10"], isPrepaid: false });
+    expect(c.tierDiscount).toBe(200);
     expect(c.prepaidDiscount).toBe(0);
-    expect(c.finalTotal).toBe(2000 - 300 - 200 + 149);
+    expect(c.finalTotal).toBe(2000 - 200 - 200 + 149);
   });
 
   it("non-stackable flat coupon respects minimum purchase", () => {

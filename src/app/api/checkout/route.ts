@@ -301,7 +301,7 @@ export async function POST(request: NextRequest) {
     // client-sent isPrepaid flag (otherwise COD could claim the prepaid bonus).
     const isPrepaid = validatedData.paymentMethod === "card";
 
-    // Calculate discounts server-side (tier 15%/20% + 5% prepaid bonus)
+    // Calculate discounts server-side (tier 10%/15% + 5% prepaid bonus)
     const calculation = calculateDiscounts({
       items: secureItems,
       appliedCouponCodes: validatedData.couponCodes,

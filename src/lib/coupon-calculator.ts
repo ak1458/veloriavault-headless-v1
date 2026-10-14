@@ -147,8 +147,8 @@ export function calculateDiscounts(input: CalculationInput): DiscountCalculation
     };
   }
 
-  // 1. Automatic Tier Discount (1 item = 15%, 2+ items = 20%)
-  const tierPercent = itemCount >= 2 ? 20 : 15;
+  // 1. Automatic Tier Discount (1 item = 10%, 2+ items = 15%)
+  const tierPercent = itemCount >= 2 ? 15 : (itemCount === 1 ? 10 : 0);
   const rawTierDiscount = Math.round((originalSubtotal * tierPercent) / 100);
 
   // 2. Manual coupons (codes from config/coupons.ts)

@@ -36,7 +36,7 @@ export interface DiscountCalculation {
   itemCount: number;
   isPrepaid: boolean;
   appliedCoupons: CartCoupon[];
-  tierDiscount: number;   // 1 item = 15%, 2+ items = 20%
+  tierDiscount: number;   // 1 item = 10%, 2+ items = 15%
   prepaidDiscount: number;
   manualCouponDiscount: number;
   codFee: number;

@@ -5,11 +5,11 @@ export const PRODUCT_PAGE_PROMO = {
     "Clear offers on the product page with the spacing and breathing room from your reference screenshots.",
   items: [
     {
-      title: "Buy 1 - Enjoy 15% Off",
+      title: "Buy 1 - Enjoy 10% Off",
       description: "Automatically applied to one bag.",
     },
     {
-      title: "Buy 2 - Get 20% Off",
+      title: "Buy 2 - Get 15% Off",
       description: "The best automatic bag offer in the current checkout flow.",
     },
     {

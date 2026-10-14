@@ -15,7 +15,7 @@ import { Coupon } from "@/types/coupon";
  * - "seasonal": For events like Diwali, Eid. Can stack with influencer.
  * - "standard": Usually non-stackable general coupons.
  * 
- * NOTE: The 15%/20% item-based tier discounts and the 5% Prepaid 
+ * NOTE: The 10%/15% item-based tier discounts and the 5% Prepaid 
  * discount are applied AUTOMATICALLY by the system. Do not add them here.
  * 
  * ALL DISCOUNTS ARE GLOBALLY CAPPED AT 35%. 

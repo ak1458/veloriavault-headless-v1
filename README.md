@@ -37,8 +37,8 @@ By separating the high-traffic frontend on **Vercel Edge Network** from the Word
 
 ### 💰 Tiered Discount & Promotion Engine
 * **Automatic Tier Discounts**: 
-  * 1 Item = **15% Off**
-  * 2+ Items = **20% Off**
+  * 1 Item = **10% Off**
+  * 2+ Items = **15% Off**
 * **Prepaid Incentive**: Extra **5% Off** automatically applied upon selecting UPI / Cards over Cash on Delivery.
 * **Algorithmic 35% Discount Cap**: Mathematical safeguard preventing discount stacking from exceeding the 35% margin threshold.
 

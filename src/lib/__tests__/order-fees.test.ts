@@ -6,16 +6,16 @@ const base: DiscountCalculation = {
   originalSubtotal: 2999,
   itemCount: 1,
   isPrepaid: true,
-  tierDiscount: 450,
+  tierDiscount: 300,
   prepaidDiscount: 150,
   manualCouponDiscount: 0,
   appliedCoupons: [],
   codFee: 0,
   shippingCost: 0,
-  finalTotal: 2399,
+  finalTotal: 2549,
   isCapped: false,
   savingsBreakdown: [
-    { label: "Automatic Tier Discount (15%)", amount: 450 },
+    { label: "Automatic Tier Discount (10%)", amount: 300 },
     { label: "Prepaid Bonus (5%)", amount: 150 },
   ],
 };
@@ -24,7 +24,7 @@ describe("buildOrderFeeLines", () => {
   it("emits one negative fee per savings line", () => {
     const lines = buildOrderFeeLines(base);
     expect(lines).toEqual([
-      { name: "Automatic Tier Discount (15%)", total: "-450", tax_status: "none" },
+      { name: "Automatic Tier Discount (10%)", total: "-300", tax_status: "none" },
       { name: "Prepaid Bonus (5%)", total: "-150", tax_status: "none" },
     ]);
   });
@@ -33,8 +33,8 @@ describe("buildOrderFeeLines", () => {
     const lines = buildOrderFeeLines({
       ...base,
       codFee: 149,
-      finalTotal: 2698,
-      savingsBreakdown: [{ label: "Automatic Tier Discount (15%)", amount: 450 }],
+      finalTotal: 2848,
+      savingsBreakdown: [{ label: "Automatic Tier Discount (10%)", amount: 300 }],
     });
     expect(lines).toContainEqual({
       name: "Cash on Delivery Fee",
@@ -53,12 +53,12 @@ describe("buildOrderFeeLines", () => {
     const lines = buildOrderFeeLines({
       ...base,
       savingsBreakdown: [
-        { label: "Automatic Tier Discount (15%)", amount: 450 },
+        { label: "Automatic Tier Discount (10%)", amount: 300 },
         { label: "Coupon: ZERO", amount: 0 },
       ],
     });
     expect(lines).toEqual([
-      { name: "Automatic Tier Discount (15%)", total: "-450", tax_status: "none" },
+      { name: "Automatic Tier Discount (10%)", total: "-300", tax_status: "none" },
     ]);
   });
 });
